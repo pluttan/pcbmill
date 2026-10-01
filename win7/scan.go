@@ -7,6 +7,7 @@ package main
 import (
 	"fmt"
 	"math"
+	"sort"
 )
 
 type Machine interface {
@@ -38,6 +39,10 @@ type Scanner struct {
 	StepFine   float64
 	FeedCoarse float64
 	FeedFine   float64
+	FeedNear   float64 // the long approach move: its depth is fixed by the target, speed only sets the wait
+	Margin     float64 // approach in one move to this much above the predicted copper
+	FineLimit  float64 // fine steps below the approach before falling back to the coarse search
+	Predict    bool    // Z is absolute (G90): a skipped command cannot shift the count, so one long approach move is safe
 	floor      float64
 	hasFloor   bool
 	Log        func(string)
@@ -46,7 +51,7 @@ type Scanner struct {
 func NewScanner(m Machine, t Touch) *Scanner {
 	return &Scanner{M: m, T: t, Clear: 0.3, Search: 3.0, Below: 0.3,
 		StepCoarse: 0.05, StepFine: 0.01,
-		FeedCoarse: 20, FeedFine: 20, Log: func(string) {}}
+		FeedCoarse: 20, FeedFine: 20, FeedNear: 100, Margin: 0.04, FineLimit: 0.06, Log: func(string) {}}
 }
 
 func (s *Scanner) z() float64 { _, _, z := s.M.Pos(); return z }
@@ -93,7 +98,11 @@ func (s *Scanner) stepDown(depth, step, feed float64) (float64, bool, error) {
 }
 
 func (s *Scanner) liftUntilOpen(z, step float64) error {
-	for k := 1; k <= 5; k++ {
+	return s.liftUntilOpenN(z, step, 5)
+}
+
+func (s *Scanner) liftUntilOpenN(z, step float64, n int) error {
+	for k := 1; k <= n; k++ {
 		if err := s.M.MoveZ(z+step*float64(k), s.FeedFine); err != nil {
 			return err
 		}
@@ -101,7 +110,7 @@ func (s *Scanner) liftUntilOpen(z, step float64) error {
 			return nil
 		}
 	}
-	return fail("контакт не размыкается после подъёма на %.2f мм: зажим замкнут на фрезу?", step*5)
+	return fail("контакт не размыкается после подъёма на %.2f мм: зажим замкнут на фрезу?", step*float64(n))
 }
 
 // TouchAt finds the copper under (x, y) and returns its Z.
@@ -143,6 +152,140 @@ func (s *Scanner) TouchAt(x, y, zClear float64) (float64, error) {
 	return zf, nil
 }
 
+// TouchNear is TouchAt for a point whose copper height is already predicted from
+// its neighbours: one move down to just above it, then only fine steps. Copper
+// above the prediction is met during that move and costs at most Margin of
+// pressing; copper well below it falls back to the ordinary coarse search.
+func (s *Scanner) TouchNear(x, y, zClear, pred float64) (float64, error) {
+	if s.T.State() {
+		return 0, fail("контакт до переезда: фрезу не подняло или провод замкнут")
+	}
+	if err := s.travel(func() error { return s.M.RapidZ(zClear) }); err != nil {
+		return 0, err
+	}
+	if err := s.travel(func() error { return s.M.RapidXY(x, y) }); err != nil {
+		return 0, err
+	}
+	approach := pred + s.Margin
+	if s.hasFloor {
+		approach = math.Max(approach, s.floor)
+	}
+	if approach < s.z() {
+		if err := s.T.Alive(); err != nil {
+			return 0, err
+		}
+		h := s.T.Hits()
+		if err := s.M.MoveZ(approach, s.FeedNear); err != nil {
+			return 0, err
+		}
+		if err := s.T.Alive(); err != nil {
+			return 0, err
+		}
+		if s.T.Hits() != h || s.T.State() {
+			// copper higher than predicted: back off until open, then come down again
+			if err := s.liftUntilOpenN(s.z(), s.StepFine, int(math.Ceil(zClear-s.z())/s.StepFine)+1); err != nil {
+				return 0, err
+			}
+		}
+	}
+	zf, ok, err := s.stepDown(s.FineLimit, s.StepFine, s.FeedFine)
+	if err != nil {
+		return 0, err
+	}
+	if !ok {
+		z, ok, err := s.stepDown(s.Search, s.StepCoarse, s.FeedCoarse)
+		if err != nil {
+			return 0, err
+		}
+		if !ok {
+			s.M.RapidZ(zClear)
+			return 0, fail("медь не найдена в X%.2f Y%.2f до Z%.2f: зажим отвалился, грязная медь "+
+				"или край заготовки", x, y, s.z())
+		}
+		if err := s.liftUntilOpen(z, s.StepCoarse); err != nil {
+			return 0, err
+		}
+		if zf, ok, err = s.stepDown(s.StepCoarse*3, s.StepFine, s.FeedFine); err != nil {
+			return 0, err
+		}
+		if !ok {
+			return 0, fail("повторное касание не случилось в X%.2f Y%.2f", x, y)
+		}
+	}
+	// straight up to the travel height: one command instead of lift-until-open plus lift
+	if err := s.M.RapidZ(zf + s.Clear); err != nil {
+		return 0, err
+	}
+	if s.T.State() {
+		return 0, fail("контакт не размыкается после подъёма на %.2f мм: подъём пропущен "+
+			"или зажим замкнут на фрезу", s.Clear)
+	}
+	return zf, nil
+}
+
+// predict guesses the copper height at p from the plane through the four nearest
+// measured points; along the first row (all on one line) it extends that line.
+// On a real 90-point map this missed by at most 0.03 mm on the high side.
+func predict(rows []Point, x, y float64) float64 {
+	near := append([]Point(nil), rows...)
+	d := func(r Point) float64 { return math.Hypot(r.X-x, r.Y-y) }
+	sort.Slice(near, func(i, j int) bool { return d(near[i]) < d(near[j]) })
+	if len(near) > 4 {
+		near = near[:4]
+	}
+	if len(near) == 1 {
+		return near[0].Z
+	}
+	if len(near) >= 3 {
+		// least squares z = a + b*dx + c*dy around p
+		var m [3][4]float64
+		for _, r := range near {
+			v := [3]float64{1, r.X - x, r.Y - y}
+			for i := 0; i < 3; i++ {
+				for j := 0; j < 3; j++ {
+					m[i][j] += v[i] * v[j]
+				}
+				m[i][3] += v[i] * r.Z
+			}
+		}
+		if a, ok := solve3(m); ok {
+			return a
+		}
+	}
+	a, b := near[0], near[1]
+	dx, dy := a.X-b.X, a.Y-b.Y
+	t := ((x-a.X)*dx + (y-a.Y)*dy) / (dx*dx + dy*dy)
+	t = math.Max(-1.5, math.Min(1.5, t))
+	return a.Z + (a.Z-b.Z)*t
+}
+
+// solve3 returns the first unknown of a 3x3 system, or ok=false when the points
+// lie on one line and the plane is not defined.
+func solve3(m [3][4]float64) (float64, bool) {
+	scale := math.Max(m[1][1], m[2][2])
+	for c := 0; c < 3; c++ {
+		p := c
+		for r := c + 1; r < 3; r++ {
+			if math.Abs(m[r][c]) > math.Abs(m[p][c]) {
+				p = r
+			}
+		}
+		m[c], m[p] = m[p], m[c]
+		if math.Abs(m[c][c]) < 1e-6*math.Max(scale, 1) {
+			return 0, false
+		}
+		for r := 0; r < 3; r++ {
+			if r != c {
+				f := m[r][c] / m[c][c]
+				for k := c; k < 4; k++ {
+					m[r][k] -= f * m[c][k]
+				}
+			}
+		}
+	}
+	return m[0][3] / m[0][0], true
+}
+
 type Point struct{ X, Y, Z float64 }
 
 // Grid touches every point; out gets each row as soon as it is measured.
@@ -162,7 +305,15 @@ func (s *Scanner) Grid(pts [][2]float64, out func(Point)) ([]Point, error) {
 			}
 			zClear = math.Max(near.Z, last.Z) + s.Clear
 		}
-		z, err := s.TouchAt(p[0], p[1], zClear)
+		var z float64
+		var err error
+		if len(rows) == 0 || !s.Predict {
+			z, err = s.TouchAt(p[0], p[1], zClear)
+		} else {
+			pred := predict(rows, p[0], p[1])
+			zClear = math.Max(zClear, pred+s.Margin+s.Clear/2)
+			z, err = s.TouchNear(p[0], p[1], zClear, pred)
+		}
 		if err != nil {
 			return rows, err
 		}

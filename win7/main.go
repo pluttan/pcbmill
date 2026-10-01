@@ -397,6 +397,7 @@ func cmdScan(o opts) error {
 		return err
 	}
 	sc := newScanner(o, nc, m)
+	sc.Predict = true // nc.Abs above
 	rows, err := sc.Grid(pts, func(p Point) {
 		fmt.Fprintf(f, "%.3f,%.3f,%.4f\n", p.X, p.Y, p.Z)
 		f.Sync()
