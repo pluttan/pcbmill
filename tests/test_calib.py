@@ -36,7 +36,8 @@ def main():
         if low < -0.15 - 1e-9:
             bad += 1
             print('%s: рез глубже 0.15: %.3f' % (path, low))
-        if w > 70 or h > 50:
+        limit = (100, 100) if '100x100' in path else (70, 50)
+        if w > limit[0] or h > limit[1]:
             bad += 1
             print('%s: заготовка %.0f x %.0f мм больше задуманной' % (path, w, h))
         hm = level.HeightMap([0, 40, 80], [0, 30, 60], [[0.0, 0.1, 0.2], [0.05, 0.1, 0.0], [0.1, 0.0, -0.1]])
@@ -47,11 +48,21 @@ def main():
             print('%s: карта не накладывается: %s' % (path, e))
         print('  %s: %.0f x %.0f мм, ~%.0f мин, самый глубокий рез %.3f' % (os.path.basename(path), w, h, minutes, low))
 
-    speed = open(made[0][0]).read()
+    speed = open([p for p, *_ in made if p.endswith('calib_speed.tap')][0]).read()
     rpms = re.findall(r'S(\d+)M3', speed)
     if rpms != ['24000', '20000', '16000', '12000', '8000']:
         bad += 1
         print('обороты по рядам: %s' % rpms)
+    one = open([p for p, *_ in made if '100x100' in p][0]).read()
+    rpms = re.findall(r'S(\d+)M3', one)
+    if rpms != ['24000', '20000', '16000', '12000', '8000', '24000']:
+        bad += 1
+        print('одна заготовка, обороты: %s' % rpms)
+    xy = [(float(x), float(y)) for x, y in re.findall(r'X(-?[\d.]+)Y(-?[\d.]+)', one)]
+    xy = [p for p in xy if p != (0.0, 0.0)]  # start and park at the zero
+    if min(min(p) for p in xy) < 1.0 or max(max(p) for p in xy) > 99.0:
+        bad += 1
+        print('одна заготовка: рез выходит за 1..99 мм')
     feeds = sorted({int(float(f)) for f in re.findall(r'G1X[^F\n]*F([\d.]+)', speed)})
     if feeds != [100, 200, 300, 450]:
         bad += 1

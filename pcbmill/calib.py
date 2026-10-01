@@ -114,10 +114,20 @@ def spin(s):
     return ['G0Z4.000', 'S%dM3' % s, 'G1Z2.000F30.0']
 
 
-def cut(op, mcfg, tool, feed):
-    t = dict(tool, feed=feed, plunge=min(feed, tool['plunge']))
-    op.paths = tp.order(op.paths)
-    return gcode.body(op, mcfg, t), gcode.stats(op, mcfg, t)[1]
+def emit(steps, mcfg, tool, dx=0.0, dy=0.0):
+    """Steps are ('spin', rpm) or ('cut', op, feed); the whole layout may be shifted."""
+    body, minutes = [], 0.0
+    for st in steps:
+        if st[0] == 'spin':
+            body += spin(st[1])
+            continue
+        _, op, feed = st
+        shift_op(op, dx, dy)
+        op.paths = tp.order(op.paths, start=(dx, dy))
+        t = dict(tool, feed=feed, plunge=min(feed, tool['plunge']))
+        body += gcode.body(op, mcfg, t)
+        minutes += gcode.stats(op, mcfg, t)[1]
+    return body, minutes
 
 
 def wrap(mcfg, rpm, body):
@@ -128,24 +138,23 @@ def wrap(mcfg, rpm, body):
 AREA = box(-10, -10, 100, 100)  # isolation clips to the board; these boards are all copper blank
 
 
-def speed_program(cfg, feeds=(100, 200, 300, 450), rpms=(24000, 20000, 16000, 12000, 8000)):
-    """Rows of spindle speed (top: fastest), columns of feed; returns (text, copper, ops, minutes)."""
-    m, iso = cfg['machine'], cfg['isolation']
+RPMS = (24000, 20000, 16000, 12000, 8000)
+
+
+def speed_steps(cfg, feeds=(100, 200, 300, 450), rpms=RPMS):
+    """Rows of spindle speed (top: fastest), columns of feed; the first row runs at rpms[0]."""
+    iso = cfg['isolation']
     tool = cfg['tools'][iso['tool']]
     pitch, x0, y0 = 7.5, 7.0, 6.0
-    body, minutes, ops, copper = [], 0.0, [], []
+    steps, copper = [], []
     for r, s in enumerate(rpms):
         if r:
-            body += spin(s)
+            steps.append(('spin', s))
         y = y0 + (len(rpms) - 1 - r) * pitch
         for c, f in enumerate(feeds):
             cell = shifted(speed_cell(), x0 + c * pitch, y)
             copper.append(cell)
-            op = tp.isolation(cell, AREA, tool, iso)
-            text, t = cut(op, m, tool, f)
-            body += text
-            minutes += t
-            ops.append(op)
+            steps.append(('cut', tp.isolation(cell, AREA, tool, iso), f))
     # labels last, at the last (slowest) speed: their quality does not matter
     marks = tp.Operation('isolation', iso['tool'])
     for r, s in enumerate(rpms):
@@ -154,15 +163,12 @@ def speed_program(cfg, feeds=(100, 200, 300, 450), rpms=(24000, 20000, 16000, 12
     for c, f in enumerate(feeds):
         x = x0 + c * pitch + 3 - text_width(label(f), 1.6) / 2
         marks.paths += engrave(label(f), x, 2.6, 1.6, 0.05)
-    text, t = cut(marks, m, tool, 200)
-    body += text
-    minutes += t
-    ops.append(marks)
-    return wrap(m, rpms[0], body), unary_union(copper), ops, minutes
+    steps.append(('cut', marks, 200))
+    return steps, unary_union(copper)
 
 
-def geom_program(cfg, feed, rpm):
-    m, iso = cfg['machine'], cfg['isolation']
+def geom_steps(cfg, feed):
+    iso = cfg['isolation']
     tool = cfg['tools'][iso['tool']]
     parts, labels = [], []
 
@@ -213,12 +219,7 @@ def geom_program(cfg, feed, rpm):
     parts.append(track([(25.0, 12.0), (26.5, 6.5), (28.0, 12.0)], 0.3))
 
     copper = unary_union(parts)
-    body, minutes, ops = [], 0.0, []
-    op = tp.isolation(copper, AREA, tool, iso)
-    text, t = cut(op, m, tool, feed)
-    body += text
-    minutes += t
-    ops.append(op)
+    steps = [('cut', tp.isolation(copper, AREA, tool, iso), feed)]
 
     # depth row: the same sample at five depths, single pass to show the groove itself
     drow = []
@@ -228,21 +229,50 @@ def geom_program(cfg, feed, rpm):
                               track([(x + 0.5, 4.5), (x + 0.5, 7.0)], 0.2)])
         drow.append(sample)
         c = dict(iso, depth=d, passes=1)
-        op = tp.isolation(sample, AREA, tool, c)
-        text, t = cut(op, m, tool, feed)
-        body += text
-        minutes += t
-        ops.append(op)
+        steps.append(('cut', tp.isolation(sample, AREA, tool, c), feed))
         labels.append((label(d), x + 2.0 - text_width(label(d), 1.6) / 2, 1.8))
 
     marks = tp.Operation('isolation', iso['tool'])
     for s, x, y in labels:
         marks.paths += engrave(s, x, y, 1.6, 0.05)
-    text, t = cut(marks, m, tool, 200)
-    body += text
-    minutes += t
-    ops.append(marks)
-    return wrap(m, rpm, body), unary_union([copper] + drow), ops, minutes
+    steps.append(('cut', marks, 200))
+    return steps, unary_union([copper] + drow)
+
+
+SPEED_ABOVE = 50.0   # on the single blank the speed grid sits this much above the geometry
+EDGE = 3.0           # and everything this much in from the blank corner X0 Y0
+
+
+def program(cfg, which, feed, rpm):
+    """'speed', 'geom' or 'one' (both on one 100 x 100 blank); returns (text, copper, ops, minutes)."""
+    from shapely import affinity
+    m, iso = cfg['machine'], cfg['isolation']
+    tool = cfg['tools'][iso['tool']]
+    if which == 'speed':
+        steps, copper = speed_steps(cfg)
+        start, dx, dy = RPMS[0], 0.0, 0.0
+    elif which == 'geom':
+        steps, copper = geom_steps(cfg, feed)
+        start, dx, dy = rpm, 0.0, 0.0
+    else:
+        s1, c1 = speed_steps(cfg)
+        s2, c2 = geom_steps(cfg, feed)
+        s1 = [st if st[0] == 'spin' else (st[0], shift_op(st[1], 0, SPEED_ABOVE), st[2]) for st in s1]
+        steps = s1 + [('spin', rpm)] + s2
+        copper = unary_union([affinity.translate(c1, 0, SPEED_ABOVE), c2])
+        start, dx, dy = RPMS[0], EDGE, EDGE
+    copper = affinity.translate(copper, dx, dy)
+    body, minutes = emit(steps, m, tool, dx, dy)
+    ops = [st[1] for st in steps if st[0] == 'cut']
+    return wrap(m, start, body), copper, ops, minutes
+
+
+def shift_op(op, dx, dy):
+    """Paths and the preview marks of narrow gaps move together."""
+    from shapely import affinity
+    op.paths = [tp.Path([(x + dx, y + dy, z) for x, y, z in p.pts]) for p in op.paths]
+    op.marks = [affinity.translate(g, dx, dy) for g in op.marks]
+    return op
 
 
 class Blank:
@@ -261,9 +291,8 @@ def write(cfg, out_dir, feed, rpm):
     from . import preview
     os.makedirs(out_dir, exist_ok=True)
     made = []
-    for name, (text, copper, ops, minutes) in [
-            ('calib_speed', speed_program(cfg)),
-            ('calib_geom', geom_program(cfg, feed, rpm))]:
+    for name, which in [('calib_100x100', 'one'), ('calib_speed', 'speed'), ('calib_geom', 'geom')]:
+        text, copper, ops, minutes = program(cfg, which, feed, rpm)
         path = os.path.join(out_dir, name + '.tap')
         with open(path, 'w', newline='\r\n') as f:
             f.write(text)
