@@ -8,3 +8,5 @@ heightmap.csv
 cnc/
 *.BAD
 /selftest/
+scan*.csv
+/win7/*.exe

@@ -12,6 +12,9 @@ def n(v):
 
 
 def header(op, mcfg, tool, title):
+    if mcfg['dialect'] == 'ncstudio':
+        # exactly the shape of the Vesi .tap files: no comments, no dwell
+        return ['T1M6', 'G0Z%s' % n(mcfg['safe_z']), 'G0X0.000Y0.000S%dM3' % mcfg['spindle']]
     out = [comment('%s: %s' % (title, op.name)),
            comment('tool %s: %s' % (op.tool, ', '.join('%s=%s' % kv for kv in tool.items())))]
     out += [comment(s) for s in op.notes]
@@ -67,6 +70,8 @@ def body(op, mcfg, tool):
 
 def emit(op, mcfg, tool, title='pcbmill'):
     lines = header(op, mcfg, tool, title) + body(op, mcfg, tool) + footer(mcfg)
+    if mcfg['dialect'] == 'ncstudio':
+        lines = [l for l in lines if not l.startswith('(')]
     return '\n'.join(lines) + '\n'
 
 

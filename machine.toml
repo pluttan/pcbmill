@@ -2,16 +2,16 @@
 # Значения по умолчанию сняты с Vesi_v3/v4.tap, которые на этом станке уже шли.
 
 [machine]
-dialect  = "grbl"    # grbl | mach3 | linuxcnc: как писать щуп и смену инструмента
+dialect  = "ncstudio" # ncstudio (Станком HT-6060) | grbl | mach3 | linuxcnc
 spindle  = 8000      # об/мин
 spinup   = 2         # пауза после M3, с
 safe_z   = 4.0       # переезды между участками
 travel_z = 1.0       # короткие переезды между соседними контурами
 park     = [0, 0]    # куда уехать в конце
 # пределы для проверки программ (pcbmill check); уточнить по станку
-limits      = [300, 180, 45]   # ход X, Y, Z от нуля, мм
+limits      = [600, 600, 80]   # HT-6060, Z уточнить
 max_feed    = 1000             # мм/мин
-max_spindle = 12000            # об/мин
+max_spindle = 24000            # об/мин
 
 [board]
 thickness = 1.5      # толщина заготовки

@@ -8,7 +8,7 @@ LOG     ?=
 DIALECT ?= grbl
 SIDE    ?= auto
 
-.PHONY: all install cam probe level show check selftest test clean
+.PHONY: all install cam probe level show check selftest scan-demo test clean
 
 all: install
 
@@ -34,8 +34,12 @@ check:            ## TAP="a.tap b.tap" → проверка перед запу�
 selftest:         ## пробные программы для станка → selftest/
 	$(PY) -m pcbmill selftest -o selftest
 
-test:             ## опасные программы ловятся, свои проходят, сквозная цепочка на примерах
+scan-demo:        ## обход сетки на симуляторе станка, без железа
+	$(PY) -m pcbmill.scan grid --machine sim --area 0,0,60,40 -y -o scan-demo.csv
+
+test:             ## опасные программы ловятся, свои проходят, обход на симуляторе, сквозная цепочка
 	$(PY) tests/test_verify.py
+	$(PY) tests/test_scan.py
 	$(PY) tests/check.py examples/gerbers/*/
 
 clean:
