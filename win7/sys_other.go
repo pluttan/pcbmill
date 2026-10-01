@@ -34,3 +34,5 @@ func ValidKeys(string) error { return nil }
 var stdinBuf = bufio.NewReader(os.Stdin)
 
 func readLine() string { s, _ := stdinBuf.ReadString('\n'); return s }
+
+func backToConsole() {}

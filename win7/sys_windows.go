@@ -22,6 +22,9 @@ var (
 
 	pWriteConsoleW      = kernel32.NewProc("WriteConsoleW")
 	pReadConsoleW       = kernel32.NewProc("ReadConsoleW")
+	pReadConsoleInputW  = kernel32.NewProc("ReadConsoleInputW")
+	pFlushConsoleInput  = kernel32.NewProc("FlushConsoleInputBuffer")
+	pGetConsoleWindow   = kernel32.NewProc("GetConsoleWindow")
 	pGetStdHandle       = kernel32.NewProc("GetStdHandle")
 	pGetCommState       = kernel32.NewProc("GetCommState")
 	pSetCommState       = kernel32.NewProc("SetCommState")
@@ -62,17 +65,46 @@ func say(f string, a ...interface{}) {
 
 var stdinBuf = bufio.NewReader(os.Stdin)
 
-// readLine through ReadConsoleW: Russian letters arrive as letters, not cp866 bytes.
+// readLine reads key by key through ReadConsoleInputW: Russian letters arrive as
+// letters, not cp866 bytes, and PageUp works without Enter (returns HotLift).
 func readLine() string {
 	h, _, _ := pGetStdHandle.Call(uintptr(0xFFFFFFF6)) // STD_INPUT_HANDLE
-	buf := make([]uint16, 512)
-	var n uint32
-	r, _, _ := pReadConsoleW.Call(h, uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)), uintptr(unsafe.Pointer(&n)), 0)
-	if r == 0 {
-		s, _ := stdinBuf.ReadString('\n')
-		return s
+	var line []rune
+	for {
+		// INPUT_RECORD: EventType WORD, pad, KEY_EVENT_RECORD{bKeyDown BOOL, wRepeatCount,
+		// wVirtualKeyCode, wVirtualScanCode WORD, UnicodeChar WCHAR, dwControlKeyState DWORD}
+		var rec [20]byte
+		var n uint32
+		r, _, _ := pReadConsoleInputW.Call(h, uintptr(unsafe.Pointer(&rec[0])), 1, uintptr(unsafe.Pointer(&n)))
+		if r == 0 { // not a console: piped input
+			s, _ := stdinBuf.ReadString('\n')
+			return strings.TrimRight(s, "\r\n")
+		}
+		if n == 0 || *(*uint16)(unsafe.Pointer(&rec[0])) != 1 || *(*uint32)(unsafe.Pointer(&rec[4])) == 0 {
+			continue // not a key press
+		}
+		vk := *(*uint16)(unsafe.Pointer(&rec[10]))
+		ch := rune(*(*uint16)(unsafe.Pointer(&rec[14])))
+		switch {
+		case vk == 0x21: // VK_PRIOR, PageUp
+			say("\n")
+			return HotLift
+		case vk >= 0x25 && vk <= 0x28: // arrows: left, up, right, down
+			say("\n")
+			return [...]string{HotLeft, HotUp, HotRight, HotDown}[vk-0x25]
+		case ch == '\r':
+			say("\n")
+			return string(line)
+		case ch == '\b':
+			if len(line) > 0 {
+				line = line[:len(line)-1]
+				say("\b \b")
+			}
+		case ch >= ' ':
+			line = append(line, ch)
+			say("%c", ch)
+		}
 	}
-	return strings.TrimRight(string(utf16.Decode(buf[:n])), "\r\n")
 }
 
 // ==========================
@@ -257,6 +289,21 @@ func (k *WinKeys) focus() error {
 		return fmt.Errorf("остановлено: окно NcStudio потеряло фокус (щелчок мышью или другое окно)")
 	}
 	return nil
+}
+
+// backToConsole returns focus to this program after a manual-mode move, so the
+// next arrow or PageUp lands here; keys pressed meanwhile (autorepeat) are dropped.
+func backToConsole() {
+	w, _, _ := pGetConsoleWindow.Call()
+	if fg, _, _ := pGetForeground.Call(); w == 0 || fg == w {
+		return // already here: keep whatever the operator typed ahead
+	}
+	sendKey(vkNames["alt"], 0, 0)
+	sendKey(vkNames["alt"], 0, keyUp)
+	pSetForeground.Call(w)
+	time.Sleep(100 * time.Millisecond)
+	h, _, _ := pGetStdHandle.Call(uintptr(0xFFFFFFF6))
+	pFlushConsoleInput.Call(h)
 }
 
 // Grab brings NcStudio forward at the start of an operation, after the operator answered.
