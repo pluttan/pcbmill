@@ -20,6 +20,7 @@ type NcStudio struct {
 	Rapid   float64       // G00 speed set in NcStudio, mm/min, to know how long to wait
 	Settle  time.Duration // per command: keystrokes + NcStudio reaction + acceleration
 	Reopen  bool          // MDI window closes after Enter
+	Abs     bool          // Z as G90 work coordinates: NcStudio Z was zeroed at the start height
 	Sleep   func(time.Duration)
 	x, y, z float64
 	known   bool
@@ -51,7 +52,11 @@ func (n *NcStudio) RapidZ(z float64) error {
 	if math.Abs(dz) < 1e-4 {
 		return nil
 	}
-	if err := n.cmd(fmt.Sprintf("G91 G00 Z%.4f", dz), math.Abs(dz)/n.Rapid*60); err != nil {
+	line := fmt.Sprintf("G91 G00 Z%.4f", dz)
+	if n.Abs {
+		line = fmt.Sprintf("G90 G00 Z%.4f", z)
+	}
+	if err := n.cmd(line, math.Abs(dz)/n.Rapid*60); err != nil {
 		return err
 	}
 	n.z = z
@@ -84,7 +89,12 @@ func (n *NcStudio) MoveZ(z, feed float64) error {
 	if math.Abs(dz) < 1e-5 {
 		return nil
 	}
-	if err := n.cmd(fmt.Sprintf("G91 G01 Z%.4f F%.0f", dz, feed), math.Abs(dz)/feed*60); err != nil {
+	// relative steps let NcStudio's rounding pile up over a long scan; absolute ones cannot
+	line := fmt.Sprintf("G91 G01 Z%.4f F%.0f", dz, feed)
+	if n.Abs {
+		line = fmt.Sprintf("G90 G01 Z%.4f F%.0f", z, feed)
+	}
+	if err := n.cmd(line, math.Abs(dz)/feed*60); err != nil {
 		return err
 	}
 	n.z = z

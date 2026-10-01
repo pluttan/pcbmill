@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -376,7 +377,8 @@ func cmdScan(o opts) error {
 	say("Перед стартом: в NcStudio ноль X0 Y0 стоит как для этой платы, шпиндель выключен,\n")
 	say("фреза (любая крепкая) на 1-2 мм над медью рядом с X%.1f Y%.1f.\n", pts[0][0], pts[0][1])
 	say("Не выше 2 мм: в первой точке медь ищется на %.0f мм вниз от старта.\n", o.search)
-	if !yes("начать?") {
+	say("Сейчас ОБНУЛИТЕ Z в NcStudio на этой высоте: обход ведёт Z абсолютными командами от этого нуля.\n")
+	if !yes("Z обнулён, начать?") {
 		return nil
 	}
 	out := filepath.Join(exeDir(), "scan.csv")
@@ -387,10 +389,12 @@ func cmdScan(o opts) error {
 	defer f.Close()
 	fmt.Fprintf(f, "# x,y,z  pcbscan, Z от высоты старта\n")
 	nc := newNc(o)
+	nc.Abs = true
 	if err := nc.Grab(); err != nil {
 		return err
 	}
-	rows, err := newScanner(o, nc, m).Grid(pts, func(p Point) {
+	sc := newScanner(o, nc, m)
+	rows, err := sc.Grid(pts, func(p Point) {
 		fmt.Fprintf(f, "%.3f,%.3f,%.4f\n", p.X, p.Y, p.Z)
 		f.Sync()
 	})
@@ -401,8 +405,21 @@ func cmdScan(o opts) error {
 		}
 		return fmt.Errorf("карта не досняна, scan.csv содержит измеренные точки")
 	}
+	say("Повторное касание первой точки: насколько всё уехало за время обхода...\n")
+	drift, err := sc.Recheck(rows)
+	if err != nil {
+		return fmt.Errorf("повторное касание не удалось, карте верить нельзя: %v", err)
+	}
+	fmt.Fprintf(f, "# повторное касание первой точки: сдвиг %+.4f мм\n", drift)
 	hm, _ := MapFromPoints(rows)
 	say("%s", hm.Table())
+	say("Сдвиг первой точки за обход: %+.3f мм\n", drift)
+	if math.Abs(drift) > 0.03 {
+		say("ВНИМАНИЕ: больше 0.03 мм. Ось Z уходит во время работы или станок пропускает команды:\n")
+		say("по этой карте резать нельзя. Проверьте механику Z и повторите.\n")
+	} else {
+		say("Сдвиг в норме, карте можно верить.\n")
+	}
 	say("Карта записана: %s\n", out)
 	return nil
 }

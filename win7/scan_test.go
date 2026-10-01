@@ -19,7 +19,10 @@ type simMachine struct {
 	lines    []string
 	dropIf   func(string) bool
 	broken   bool
-	dieAfter int // MCU goes silent after this many lines (0: never)
+	dieAfter int     // MCU goes silent after this many lines (0: never)
+	relErr   float64 // NcStudio rounding: every relative Z move lands this much off
+	mechUp   float64 // the Z axis itself creeps up by this much per command
+	offset   float64 // work Z0 in the board frame (G90 targets are relative to it)
 }
 
 var reAx = regexp.MustCompile(`([XYZ])(-?[\d.]+)`)
@@ -34,6 +37,12 @@ func (s *simMachine) Line(l string) error {
 		return nil
 	}
 	rel := strings.Contains(l, "G91")
+	if rel && strings.Contains(l, "Z") {
+		s.z += s.relErr
+	}
+	// a creeping axis moves the machine's own idea of zero, under any command style
+	s.offset += s.mechUp
+	s.z += s.mechUp
 	for _, m := range reAx.FindAllStringSubmatch(l, -1) {
 		v, _ := strconv.ParseFloat(m[2], 64)
 		switch m[1] {
@@ -45,7 +54,7 @@ func (s *simMachine) Line(l string) error {
 			if rel {
 				s.z += v
 			} else {
-				s.z = v
+				s.z = v + s.offset
 			}
 		}
 	}
@@ -199,4 +208,45 @@ func TestClipFallsOffMidScan(t *testing.T) {
 		t.Errorf("фреза ушла в плату на %.3f мм", sm.maxDig)
 	}
 	t.Logf("%v; глубже меди на %.3f мм", err, sm.maxDig)
+}
+
+// relative rounding piles up; absolute Z does not, and the recheck sees what is left
+func TestAbsoluteZNoDrift(t *testing.T) {
+	pts := GridPoints(0, 60, 0, 40, 10)
+	sm, nc, s := setup()
+	sm.relErr = 0.0005
+	rows, _ := s.Grid(pts, nil)
+	dRel, _ := s.Recheck(rows)
+
+	sm2, nc2, s2 := setup()
+	sm2.relErr = 0.0005
+	nc2.Abs = true
+	rows2, _ := s2.Grid(pts, nil)
+	dAbs, _ := s2.Recheck(rows2)
+	t.Logf("сдвиг первой точки: G91 %+.4f, G90 %+.4f", dRel, dAbs)
+	if math.Abs(dAbs) > 0.011 {
+		t.Errorf("с абсолютным Z всё равно уехало на %.4f", dAbs)
+	}
+	if math.Abs(dRel) < 0.03 {
+		t.Errorf("модель округления не дала дрейфа: %.4f", dRel)
+	}
+	_, _ = sm, nc
+}
+
+func TestRecheckSeesMechanicalCreep(t *testing.T) {
+	sm, nc, s := setup()
+	nc.Abs = true
+	sm.mechUp = 0.0005 // the axis itself wanders: no command style can hide it
+	rows, err := s.Grid(GridPoints(0, 60, 0, 40, 10), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := s.Recheck(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if math.Abs(d) < 0.03 {
+		t.Errorf("уход оси не замечен: %.4f", d)
+	}
+	t.Logf("уход оси за обход: %+.4f мм", d)
 }

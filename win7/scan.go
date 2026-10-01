@@ -194,3 +194,21 @@ func (s *Scanner) Grid(pts [][2]float64, out func(Point)) ([]Point, error) {
 	}
 	return rows, nil
 }
+
+// Recheck touches the first point again after the scan: anything but zero is how
+// far Z wandered while scanning, and the map is only as good as that number.
+func (s *Scanner) Recheck(rows []Point) (float64, error) {
+	if len(rows) == 0 {
+		return 0, nil
+	}
+	hi := rows[0].Z
+	for _, r := range rows {
+		hi = math.Max(hi, r.Z)
+	}
+	s.hasFloor = false // the drift is exactly what is unknown here: search the full depth
+	z, err := s.TouchAt(rows[0].X, rows[0].Y, hi+s.Clear)
+	if err != nil {
+		return 0, err
+	}
+	return z - rows[0].Z, nil
+}
