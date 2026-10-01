@@ -36,3 +36,12 @@ var stdinBuf = bufio.NewReader(os.Stdin)
 func readLine() string { s, _ := stdinBuf.ReadString('\n'); return s }
 
 func backToConsole() {}
+
+type WinInfo struct {
+	H                      uintptr
+	Class, Text            string
+	ID                     int
+	Left, Top, Right, Bott int32
+}
+
+func NcWindows(string) ([]WinInfo, error) { return nil, errors.New("только Windows") }

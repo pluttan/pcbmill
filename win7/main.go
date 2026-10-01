@@ -501,6 +501,78 @@ func cmdLevel(o opts) error {
 	return nil
 }
 
+// cmdFindCoords: can this program read the X/Y/Z NcStudio shows? Snapshot the text
+// of every NcStudio control, move each axis by 1 mm, and see which texts change.
+func cmdFindCoords(o opts) error {
+	say("Программа ищет, откуда можно читать координаты NcStudio.\n")
+	say("Станок сдвинется: Z вверх на 1 мм, X на +1, Y на +1, и вернётся обратно.\n")
+	say("Фреза должна быть поднята над платой, шпиндель стоять.\n")
+	if !yes("начать?") {
+		return nil
+	}
+	out := filepath.Join(exeDir(), "ncwindows.txt")
+	f, err := os.Create(out)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	snap := func(name string) (map[uintptr]WinInfo, error) {
+		ws, err := NcWindows(o.title)
+		if err != nil {
+			return nil, err
+		}
+		fmt.Fprintf(f, "\r\n=== %s: %d окон\r\n", name, len(ws))
+		m := map[uintptr]WinInfo{}
+		for _, w := range ws {
+			m[w.H] = w
+			fmt.Fprintf(f, "%08x  %-28s id %-6d (%d,%d)-(%d,%d)  %q\r\n",
+				w.H, w.Class, w.ID, w.Left, w.Top, w.Right, w.Bott, w.Text)
+		}
+		return m, nil
+	}
+	base, err := snap("до движения")
+	if err != nil {
+		return err
+	}
+	nc := newNc(o)
+	if err := nc.Grab(); err != nil {
+		return err
+	}
+	found := 0
+	prev := base
+	for _, ax := range []string{"Z", "X", "Y"} {
+		if err := nc.cmd("G91 G00 "+ax+"1", 1.0); err != nil {
+			return err
+		}
+		time.Sleep(500 * time.Millisecond) // the display refreshes after the move
+		cur, err := snap(ax + " +1 мм")
+		if err != nil {
+			return err
+		}
+		for h, w := range cur {
+			if p, ok := prev[h]; ok && p.Text != w.Text {
+				found++
+				line := fmt.Sprintf("после %s+1 изменилось: %s id %d (%d,%d)  %q -> %q",
+					ax, w.Class, w.ID, w.Left, w.Top, p.Text, w.Text)
+				fmt.Fprintf(f, "%s\r\n", line)
+				say("  %s\n", line)
+			}
+		}
+		prev = cur
+	}
+	if err := nc.Grab(); err == nil {
+		nc.cmd("G91 G00 X-1 Y-1", 1.0)
+		nc.cmd("G91 G00 Z-1", 1.0)
+	}
+	if found == 0 {
+		say("Ни один текст не изменился: NcStudio рисует цифры картинкой, читать придётся с экрана.\n")
+	} else {
+		say("Координаты читаются как текст.\n")
+	}
+	say("Всё записано в %s, пришлите этот файл.\n", out)
+	return nil
+}
+
 // HotLift is what readLine returns for PageUp: lift at once, no Enter needed.
 const HotLift = "\x01lift"
 
@@ -800,6 +872,7 @@ func main() {
 		say("  4  после смены фрезы: Z0 на меди\n")
 		say("  5  выровнять программу по карте\n")
 		say("  6  ручной режим: сами шлёте команды в NcStudio\n")
+		say("  7  найти, откуда читать координаты NcStudio\n")
 		say("  0  выход\n")
 		var err error
 		switch ask("> ") {
@@ -815,6 +888,8 @@ func main() {
 			err = cmdLevel(o)
 		case "6":
 			err = cmdManual(o)
+		case "7":
+			err = cmdFindCoords(o)
 		case "0":
 			return
 		}

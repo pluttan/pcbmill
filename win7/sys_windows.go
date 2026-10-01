@@ -39,6 +39,11 @@ var (
 	pSendInput          = user32.NewProc("SendInput")
 	pShowWindow         = user32.NewProc("ShowWindow")
 	pGetWindowThreadPid = user32.NewProc("GetWindowThreadProcessId")
+	pEnumChildWindows   = user32.NewProc("EnumChildWindows")
+	pGetClassNameW      = user32.NewProc("GetClassNameW")
+	pGetDlgCtrlID       = user32.NewProc("GetDlgCtrlID")
+	pGetWindowRect      = user32.NewProc("GetWindowRect")
+	pSendMessageTimeout = user32.NewProc("SendMessageTimeoutW")
 	pRegOpenKeyExW      = advapi32.NewProc("RegOpenKeyExW")
 	pRegEnumValueW      = advapi32.NewProc("RegEnumValueW")
 	pRegCloseKey        = advapi32.NewProc("RegCloseKey")
@@ -394,4 +399,70 @@ func (k *WinKeys) Line(s string) error {
 	}
 	k.combo("enter")
 	return nil
+}
+
+// ==========================
+// ===  NcStudio windows  ===
+// ==========================
+
+// WinInfo is one window of the NcStudio process as another program sees it.
+type WinInfo struct {
+	H                      uintptr
+	Class, Text            string
+	ID                     int
+	Left, Top, Right, Bott int32
+}
+
+// windowText asks the window itself (WM_GETTEXT): GetWindowText does not reach
+// controls of another process. A hung window gives up after 200 ms.
+func windowText(h uintptr) string {
+	buf := make([]uint16, 512)
+	var res uintptr
+	r, _, _ := pSendMessageTimeout.Call(h, 0x000D, uintptr(len(buf)), uintptr(unsafe.Pointer(&buf[0])),
+		0x0002, 200, uintptr(unsafe.Pointer(&res))) // WM_GETTEXT, SMTO_ABORTIFHUNG
+	if r == 0 {
+		return ""
+	}
+	return syscall.UTF16ToString(buf)
+}
+
+// NcWindows lists every window and control of the NcStudio process with its text.
+func NcWindows(title string) ([]WinInfo, error) {
+	k := &WinKeys{Title: title}
+	if err := k.find(); err != nil {
+		return nil, err
+	}
+	var pid uint32
+	pGetWindowThreadPid.Call(k.hwnd, uintptr(unsafe.Pointer(&pid)))
+	var out []WinInfo
+	add := func(h uintptr) {
+		var w WinInfo
+		w.H = h
+		cls := make([]uint16, 128)
+		pGetClassNameW.Call(h, uintptr(unsafe.Pointer(&cls[0])), 128)
+		w.Class = syscall.UTF16ToString(cls)
+		id, _, _ := pGetDlgCtrlID.Call(h)
+		w.ID = int(int32(id))
+		var rc [4]int32
+		pGetWindowRect.Call(h, uintptr(unsafe.Pointer(&rc[0])))
+		w.Left, w.Top, w.Right, w.Bott = rc[0], rc[1], rc[2], rc[3]
+		w.Text = windowText(h)
+		out = append(out, w)
+	}
+	child := syscall.NewCallback(func(h, _ uintptr) uintptr { add(h); return 1 })
+	var tops []uintptr
+	top := syscall.NewCallback(func(h, _ uintptr) uintptr {
+		var p uint32
+		pGetWindowThreadPid.Call(h, uintptr(unsafe.Pointer(&p)))
+		if p == pid {
+			tops = append(tops, h)
+		}
+		return 1
+	})
+	pEnumWindows.Call(top, 0)
+	for _, h := range tops {
+		add(h)
+		pEnumChildWindows.Call(h, child, 0) // all descendants, not only direct children
+	}
+	return out, nil
 }
