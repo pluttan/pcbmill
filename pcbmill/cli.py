@@ -197,6 +197,17 @@ def cmd_selftest(a):
     selftest.write_all(a.out, cfg, guard)
 
 
+def cmd_calib(a):
+    from . import calib
+    cfg = load_cfg(a.machine, a.set)
+    for path, w, h, minutes, ops in calib.write(cfg, a.out, a.feed, a.rpm):
+        guard(path, cfg, 'iso')
+        print('  %-26s заготовка %.0f x %.0f мм, ~%.0f мин' % (os.path.basename(path), w, h, minutes))
+        for s in ops[0].notes:
+            print('      ' + s)
+    print('  превью рядом, *.png')
+
+
 # ==========================
 # ===  Arguments         ===
 # ==========================
@@ -225,6 +236,13 @@ def main():
     g.add_argument('--map', help='карта высот: сразу выдать выровненные программы')
     g.add_argument('--seg', type=float, default=1.0, help='шаг дробления под карту, мм')
     g.set_defaults(fn=cmd_cam)
+
+    g = sp.add_parser('calib', help='калибровочные платы: подача и обороты, ширины, зазоры, плотность')
+    g.add_argument('-o', '--out', default='calib')
+    g.add_argument('--feed', type=float, default=200, help='подача для платы геометрии, мм/мин')
+    g.add_argument('--rpm', type=int, default=24000, help='обороты для платы геометрии')
+    common(g)
+    g.set_defaults(fn=cmd_calib)
 
     g = sp.add_parser('check', help='прогнать программы через проверку перед запуском')
     g.add_argument('files', nargs='+')

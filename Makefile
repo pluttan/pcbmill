@@ -8,7 +8,7 @@ LOG     ?=
 DIALECT ?= grbl
 SIDE    ?= auto
 
-.PHONY: all install cam probe level show check selftest scan-demo win7 test clean
+.PHONY: all install cam probe level show check selftest calib scan-demo win7 test clean
 
 all: install
 
@@ -34,6 +34,9 @@ check:            ## TAP="a.tap b.tap" → проверка перед запу�
 selftest:         ## пробные программы для станка → selftest/
 	$(PY) -m pcbmill selftest -o selftest
 
+calib:            ## калибровочные платы: подача x обороты, ширины, зазоры → examples/calib/
+	$(PY) -m pcbmill calib -o examples/calib
+
 scan-demo:        ## обход сетки на симуляторе станка, без железа
 	$(PY) -m pcbmill.scan grid --machine sim --area 0,0,60,40 -y -o scan-demo.csv
 
@@ -45,6 +48,7 @@ win7:             ## win7/pcbscan.exe for the NcStudio PC (Go 1.20, 32-bit)
 test:             ## опасные программы ловятся, свои проходят, обход на симуляторе, сквозная цепочка
 	$(PY) tests/test_verify.py
 	$(PY) tests/test_scan.py
+	$(PY) tests/test_calib.py
 	cd win7 && $(GO) test .
 	$(PY) tests/check.py examples/gerbers/*/
 
