@@ -15,6 +15,20 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # ===  Config            ===
 # ==========================
 
+def guard(path, cfg, kind):
+    """Dry-run a freshly written program; a dangerous one is renamed so it cannot be run by mistake."""
+    from . import verify
+    r = verify.check_file(path, cfg, kind)
+    if not r.ok:
+        os.replace(path, path + '.BAD')
+        r.path = path + '.BAD'
+        print(r.text())
+        sys.exit('программа не прошла проверку и переименована в .BAD')
+    for w in r.warnings[:5]:
+        print('      внимание: ' + w)
+    return r
+
+
 def load_cfg(path, overrides):
     with open(path, 'rb') as f:
         cfg = tomllib.load(f)
@@ -71,6 +85,7 @@ def cmd_cam(a):
         path = os.path.join(out_dir, fname)
         with open(path, 'w') as f:
             f.write(text)
+        guard(path, cfg, {'isolation': 'iso', 'drill': 'drill', 'cutout': 'cut'}[op.name])
         cut, minutes = gcode.stats(op, m, tool)
         total += minutes
         print('  %-28s %5d проходов, рез %6.0f мм, ~%3.0f мин' % (fname, len(op.paths), cut, minutes))
@@ -118,10 +133,13 @@ def tap_lines(path):
 
 
 def cmd_probe(a):
+    cfg = load_cfg(a.machine, a.set)
     b = level.cut_bounds(tap_lines(a.tap))
     xs, ys, pts = level.grid_points(b, a.step, a.margin)
     with open(a.out, 'w') as f:
-        f.write(level.probe_program(pts, a.dialect, a.clear, a.depth, a.feed, a.log))
+        f.write(level.probe_program(pts, a.dialect or cfg['machine']['dialect'],
+                                    a.clear, a.depth, a.feed, a.log))
+    guard(a.out, cfg, 'probe')
     print('рабочая зона X %.2f..%.2f  Y %.2f..%.2f' % b)
     print('сетка %d×%d = %d касаний → %s' % (len(xs), len(ys), len(pts), a.out))
 
@@ -157,12 +175,37 @@ def cmd_apply(a):
     text = level.apply_map(tap_lines(a.tap), hm, a.seg, 0.0, a.strip_m6, ref)
     with open(out, 'w') as f:
         f.write(text)
+    from . import verify
+    guard(out, load_cfg(a.machine, a.set), verify.guess_kind(a.tap))
     print('%s → %s, строк %d' % (a.tap, out, text.count('\n')))
+
+
+def cmd_check(a):
+    from . import verify
+    cfg = load_cfg(a.machine, a.set)
+    bad = 0
+    for p in a.files:
+        r = verify.check_file(p, cfg, a.kind or verify.guess_kind(p))
+        print(r.text(a.limit))
+        bad += not r.ok
+    sys.exit(1 if bad else 0)
+
+
+def cmd_selftest(a):
+    from . import selftest
+    cfg = load_cfg(a.machine, a.set)
+    selftest.write_all(a.out, cfg, guard)
 
 
 # ==========================
 # ===  Arguments         ===
 # ==========================
+
+def common(g):
+    g.add_argument('-m', '--machine', default=os.path.join(HERE, 'machine.toml'), help='профиль станка')
+    g.add_argument('-s', '--set', action='append', metavar='KEY=VAL',
+                   help='переопределить профиль: -s isolation.depth=0.12')
+
 
 def main():
     warnings.simplefilter('ignore', SyntaxWarning)
@@ -173,7 +216,7 @@ def main():
     g.add_argument('gerbers', help='папка с Gerber/Excellon (или zip)')
     g.add_argument('-o', '--out', help='куда писать (по умолчанию <папка>/cnc)')
     g.add_argument('-n', '--name', help='имя для файлов')
-    g.add_argument('-m', '--machine', default=os.path.join(HERE, 'machine.toml'))
+    common(g)
     g.add_argument('--top', help='файл меди сверху, если не распознался сам')
     g.add_argument('--bottom', help='файл меди снизу')
     g.add_argument('--outline', help='файл контура платы')
@@ -181,13 +224,24 @@ def main():
     g.add_argument('--ops', default='iso,drill,cut', help='iso,drill,cut')
     g.add_argument('--map', help='карта высот: сразу выдать выровненные программы')
     g.add_argument('--seg', type=float, default=1.0, help='шаг дробления под карту, мм')
-    g.add_argument('-s', '--set', action='append', metavar='KEY=VAL',
-                   help='переопределить профиль: -s isolation.depth=0.12')
     g.set_defaults(fn=cmd_cam)
+
+    g = sp.add_parser('check', help='прогнать программы через проверку перед запуском')
+    g.add_argument('files', nargs='+')
+    g.add_argument('--kind', choices=['iso', 'drill', 'cut', 'probe', 'test'])
+    g.add_argument('--limit', type=int, default=10, help='сколько замечаний показывать')
+    common(g)
+    g.set_defaults(fn=cmd_check)
+
+    g = sp.add_parser('selftest', help='пробные программы: проверить станок до первой платы')
+    g.add_argument('-o', '--out', default='selftest')
+    common(g)
+    g.set_defaults(fn=cmd_selftest)
 
     g = sp.add_parser('probe', help='программа щупа по габариту .tap')
     g.add_argument('tap'); g.add_argument('-o', '--out', default='probe.nc')
-    g.add_argument('--dialect', choices=['grbl', 'mach3', 'linuxcnc'], default='grbl')
+    g.add_argument('--dialect', choices=['grbl', 'mach3', 'linuxcnc'], help='по умолчанию из профиля')
+    common(g)
     g.add_argument('--step', type=float, default=10, help='шаг сетки, мм')
     g.add_argument('--margin', type=float, default=0, help='вылет сетки за рабочую зону, мм')
     g.add_argument('--clear', type=float, default=1.5, help='высота переездов, мм')
@@ -218,6 +272,7 @@ def main():
     g.add_argument('--seg', type=float, default=1.0, help='макс. длина отрезка, мм')
     g.add_argument('--ref', help='X,Y точки, где после смены фрезы заново выставлен Z0')
     g.add_argument('--strip-m6', action='store_true', help='закомментировать T/M6 (GRBL на них ругается)')
+    common(g)
     g.set_defaults(fn=cmd_apply)
 
     a = p.parse_args()

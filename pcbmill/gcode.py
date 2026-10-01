@@ -2,14 +2,19 @@
 import math
 
 
+def comment(text):
+    """Controllers neither nest parentheses nor agree on ';' inside them."""
+    return '(' + text.replace('(', '[').replace(')', ']').replace(';', ',') + ')'
+
+
 def n(v):
     return '%.3f' % (0.0 if abs(v) < 5e-4 else v)
 
 
 def header(op, mcfg, tool, title):
-    out = ['(%s: %s)' % (title, op.name),
-           '(tool %s: %s)' % (op.tool, ', '.join('%s=%s' % kv for kv in tool.items()))]
-    out += ['(%s)' % s for s in op.notes]
+    out = [comment('%s: %s' % (title, op.name)),
+           comment('tool %s: %s' % (op.tool, ', '.join('%s=%s' % kv for kv in tool.items())))]
+    out += [comment(s) for s in op.notes]
     out.append('G21G90G17G94')
     if mcfg['dialect'] == 'grbl':
         out.append('(T1M6)')          # grbl rejects M6; tool is changed by hand before the run

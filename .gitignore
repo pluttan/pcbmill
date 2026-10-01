@@ -6,3 +6,5 @@ probe*.nc
 heightmap.csv
 *.log
 cnc/
+*.BAD
+/selftest/

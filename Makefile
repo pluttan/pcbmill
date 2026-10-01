@@ -8,7 +8,7 @@ LOG     ?=
 DIALECT ?= grbl
 SIDE    ?= auto
 
-.PHONY: all install cam probe level show test clean
+.PHONY: all install cam probe level show check selftest test clean
 
 all: install
 
@@ -28,7 +28,14 @@ level:            ## TAP=программа LOG=лог касаний → height
 show:
 	$(PY) -m pcbmill show heightmap.csv
 
-test:             ## сквозная проверка на примерах из examples/gerbers
+check:            ## TAP="a.tap b.tap" → проверка перед запуском на станке
+	$(PY) -m pcbmill check $(TAP)
+
+selftest:         ## пробные программы для станка → selftest/
+	$(PY) -m pcbmill selftest -o selftest
+
+test:             ## опасные программы ловятся, свои проходят, сквозная цепочка на примерах
+	$(PY) tests/test_verify.py
 	$(PY) tests/check.py examples/gerbers/*/
 
 clean:
