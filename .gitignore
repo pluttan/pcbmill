@@ -1,0 +1,7 @@
+__pycache__/
+*_level.tap
+*_level.nc
+probe*.nc
+probe*.tap
+heightmap.csv
+*.log
