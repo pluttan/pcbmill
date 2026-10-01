@@ -1,14 +1,35 @@
-TAP ?= examples/Vesi_v4.tap
+VENV := venv
+PY   := $(VENV)/bin/python3.12
+PIP  := $(VENV)/bin/pip
+
+GERBERS ?=
+TAP     ?=
+LOG     ?=
 DIALECT ?= grbl
+SIDE    ?= auto
 
-.PHONY: probe level show
+.PHONY: all install cam probe level show test clean
 
-probe:            ## программа щупа по программе TAP
-	python3 pcbprobe.py grid $(TAP) --dialect $(DIALECT) -o probe.nc
+all: install
 
-level:            ## LOG=лог касаний → карта → TAP_level
-	python3 pcbprobe.py map $(LOG) --tap $(TAP) -o heightmap.csv
-	python3 pcbprobe.py apply $(TAP) heightmap.csv --strip-m6
+install:
+	python3.12 -m venv $(VENV) && $(PIP) install -U pip && $(PIP) install -r requirements.txt
+
+cam:              ## GERBERS=папка → GERBERS/cnc/*.tap и превью
+	$(PY) -m pcbmill cam $(GERBERS) --side $(SIDE)
+
+probe:            ## TAP=программа → probe.nc
+	$(PY) -m pcbmill probe $(TAP) --dialect $(DIALECT) -o probe.nc
+
+level:            ## TAP=программа LOG=лог касаний → heightmap.csv и TAP_level
+	$(PY) -m pcbmill map $(LOG) --tap $(TAP) -o heightmap.csv
+	$(PY) -m pcbmill apply $(TAP) heightmap.csv
 
 show:
-	python3 pcbprobe.py show heightmap.csv
+	$(PY) -m pcbmill show heightmap.csv
+
+test:             ## сквозная проверка на примерах из examples/gerbers
+	$(PY) tests/check.py examples/gerbers/*/
+
+clean:
+	rm -rf $(VENV) __pycache__ pcbmill/__pycache__ *.pyc
