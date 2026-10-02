@@ -93,9 +93,52 @@ func axis(lo, hi, step float64) []float64 {
 	return out
 }
 
+// Grid is the height map layout: a box and how many points along each side.
+type Grid struct {
+	X0, X1, Y0, Y1 float64
+	NX, NY         int
+}
+
+// GridFor spreads points over the box at most step apart, ends included.
+func GridFor(x0, x1, y0, y1, step float64) Grid {
+	return Grid{x0, x1, y0, y1, len(axis(x0, x1, step)), len(axis(y0, y1, step))}
+}
+
+func spread(lo, hi float64, n int) []float64 {
+	if n < 2 || hi-lo < 1e-9 {
+		return []float64{lo}
+	}
+	out := make([]float64, n)
+	for i := range out {
+		out[i] = lo + (hi-lo)*float64(i)/float64(n-1)
+	}
+	return out
+}
+
+func (g Grid) StepX() float64 { return stepOf(g.X0, g.X1, g.NX) }
+func (g Grid) StepY() float64 { return stepOf(g.Y0, g.Y1, g.NY) }
+
+func stepOf(lo, hi float64, n int) float64 {
+	if n < 2 {
+		return 0
+	}
+	return (hi - lo) / float64(n-1)
+}
+
+// CountFor is how many points cover lo..hi at most step apart.
+func CountFor(lo, hi, step float64) int { return len(axis(lo, hi, step)) }
+
+// Points walks the box as a snake to keep travel short.
+func (g Grid) Points() [][2]float64 {
+	return snake(spread(g.X0, g.X1, g.NX), spread(g.Y0, g.Y1, g.NY))
+}
+
 // GridPoints walks the box as a snake to keep travel short.
 func GridPoints(x0, x1, y0, y1, step float64) [][2]float64 {
-	xs, ys := axis(x0, x1, step), axis(y0, y1, step)
+	return snake(axis(x0, x1, step), axis(y0, y1, step))
+}
+
+func snake(xs, ys []float64) [][2]float64 {
 	var pts [][2]float64
 	for j, y := range ys {
 		for i := range xs {

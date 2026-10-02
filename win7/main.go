@@ -351,16 +351,126 @@ func cmdNcTest(o opts) error {
 	return nil
 }
 
-func gridFor(tap string, step float64) ([][2]float64, error) {
+func gridFor(tap string, step float64) (Grid, error) {
 	lines, err := readLines(tap)
 	if err != nil {
-		return nil, err
+		return Grid{}, err
 	}
 	x0, x1, y0, y1, err := CutBounds(lines)
 	if err != nil {
-		return nil, err
+		return Grid{}, err
 	}
-	return GridPoints(x0, x1, y0, y1, step), nil
+	return GridFor(x0, x1, y0, y1, step), nil
+}
+
+// secondsPerPoint: about 8 MDI commands of about 1.1 s each with the predicted approach.
+const secondsPerPoint = 9.0
+
+func showGrid(g Grid, prog Grid) {
+	say("\nСетка карты высот:\n")
+	say("  область  X %.2f .. %.2f   Y %.2f .. %.2f мм\n", g.X0, g.X1, g.Y0, g.Y1)
+	say("  точек    X %d (шаг %.2f)   Y %d (шаг %.2f)\n", g.NX, g.StepX(), g.NY, g.StepY())
+	say("  всего %d точек, примерно %.0f мин\n", g.NX*g.NY, float64(g.NX*g.NY)*secondsPerPoint/60)
+	say("  (рез программы: X %.2f .. %.2f   Y %.2f .. %.2f)\n", prog.X0, prog.X1, prog.Y0, prog.Y1)
+}
+
+// keepStep: the current step, or the program's when there is a single point (no step yet).
+func keepStep(cur, prog float64) float64 {
+	if cur >= 1 {
+		return cur
+	}
+	if prog >= 1 {
+		return prog
+	}
+	return 10
+}
+
+// editGrid lets the operator change the map layout before the scan; false = cancelled.
+func editGrid(g Grid) (Grid, bool) {
+	prog := g
+	for {
+		showGrid(g, prog)
+		if g.X0 > prog.X0+1e-6 || g.X1 < prog.X1-1e-6 || g.Y0 > prog.Y0+1e-6 || g.Y1 < prog.Y1-1e-6 {
+			say("  ВНИМАНИЕ: сетка меньше реза программы, за её краем высота берётся с края карты\n")
+		}
+		say("Enter - начать с этой сеткой, или поменять:\n")
+		say("  x 0 60   область по X, мм     y 0 40   область по Y, мм     m 2   запас за край реза\n")
+		say("  sx 5     шаг по X, мм         sy 5     шаг по Y, мм         s 10  шаг по обеим\n")
+		say("  nx 8     точек по X           ny 6     точек по Y           r     как в программе\n")
+		say("  q        отмена\n")
+		in := latin(ask("> "))
+		f := strings.Fields(strings.ReplaceAll(in, ",", "."))
+		if len(f) == 0 {
+			return g, true
+		}
+		num := func(i int) (float64, bool) {
+			if len(f) <= i {
+				return 0, false
+			}
+			v, err := strconv.ParseFloat(f[i], 64)
+			return v, err == nil && !math.IsNaN(v) && !math.IsInf(v, 0)
+		}
+		a, okA := num(1)
+		b, okB := num(2)
+		ok := true
+		switch f[0] {
+		case "q":
+			return g, false
+		case "r":
+			g = prog
+		case "x", "y":
+			if !okA || !okB || b <= a || a < -10 || b > 600 {
+				ok = false
+				break
+			}
+			if f[0] == "x" { // the step stays what it was, the count follows the new length
+				sx := keepStep(g.StepX(), prog.StepX())
+				g.X0, g.X1 = a, b
+				g.NX = CountFor(a, b, sx)
+			} else {
+				sy := keepStep(g.StepY(), prog.StepY())
+				g.Y0, g.Y1 = a, b
+				g.NY = CountFor(a, b, sy)
+			}
+		case "m":
+			if !okA || a < 0 || a > 20 {
+				ok = false
+				break
+			}
+			sx, sy := keepStep(g.StepX(), prog.StepX()), keepStep(g.StepY(), prog.StepY())
+			g.X0, g.X1, g.Y0, g.Y1 = prog.X0-a, prog.X1+a, prog.Y0-a, prog.Y1+a
+			g.NX, g.NY = CountFor(g.X0, g.X1, sx), CountFor(g.Y0, g.Y1, sy)
+		case "sx", "sy", "s":
+			if !okA || a < 1 || a > 200 {
+				say("шаг от 1 до 200 мм\n")
+				continue
+			}
+			if f[0] != "sy" {
+				g.NX = CountFor(g.X0, g.X1, a)
+			}
+			if f[0] != "sx" {
+				g.NY = CountFor(g.Y0, g.Y1, a)
+			}
+		case "nx", "ny":
+			if !okA || a < 1 || a > 100 || a != math.Trunc(a) {
+				say("точек от 1 до 100\n")
+				continue
+			}
+			if f[0] == "nx" {
+				g.NX = int(a)
+			} else {
+				g.NY = int(a)
+			}
+		default:
+			ok = false
+		}
+		if !ok {
+			say("не понял «%s»\n", in)
+		}
+		if g.NX*g.NY > 400 {
+			say("больше 400 точек - это больше часа, уменьшите\n")
+		}
+	}
 }
 
 func cmdScan(o opts) error {
@@ -368,15 +478,20 @@ func cmdScan(o opts) error {
 	if err != nil {
 		return err
 	}
-	pts, err := gridFor(tap, o.grid)
+	g, err := gridFor(tap, o.grid)
 	if err != nil {
 		return err
 	}
+	g, ok := editGrid(g)
+	if !ok {
+		return nil
+	}
+	pts := g.Points()
 	m, name, err := findMCU(o.port)
 	if err != nil {
 		return err
 	}
-	say("МК на %s. Точек %d, примерно %.0f мин.\n", name, len(pts), float64(len(pts))*12/60)
+	say("МК на %s. Точек %d, примерно %.0f мин.\n", name, len(pts), float64(len(pts))*secondsPerPoint/60)
 	say("Перед стартом: в NcStudio ноль X0 Y0 стоит как для этой платы, шпиндель выключен,\n")
 	say("фреза (любая крепкая) на 1-2 мм над медью рядом с X%.1f Y%.1f.\n", pts[0][0], pts[0][1])
 	say("Не выше 2 мм: в первой точке медь ищется на %.0f мм вниз от старта.\n", o.search)
@@ -429,14 +544,23 @@ func cmdScan(o opts) error {
 }
 
 func cmdZero(o opts) error {
-	tap, err := pickTap(exeDir())
-	if err != nil {
-		return err
+	// Z0 goes where the map has its zero: the first point of scan.csv, whatever grid it used
+	var first [2]float64
+	if rows, e := LoadPoints(filepath.Join(exeDir(), "scan.csv")); e == nil && len(rows) > 0 {
+		first = [2]float64{rows[0].X, rows[0].Y}
+	} else {
+		tap, err := pickTap(exeDir())
+		if err != nil {
+			return err
+		}
+		g, err := gridFor(tap, o.grid)
+		if err != nil {
+			return err
+		}
+		first = g.Points()[0]
+		say("scan.csv нет, беру первую точку сетки по программе\n")
 	}
-	pts, err := gridFor(tap, o.grid)
-	if err != nil {
-		return err
-	}
+	pts := [][2]float64{first}
 	m, _, err := findMCU(o.port)
 	if err != nil {
 		return err
