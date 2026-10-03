@@ -127,7 +127,9 @@ var (
 	})
 )
 
-func containsFold(s, sub string) bool { return strings.Contains(strings.ToLower(s), strings.ToLower(sub)) }
+func containsFold(s, sub string) bool {
+	return strings.Contains(strings.ToLower(s), strings.ToLower(sub))
+}
 
 // findTop is the visible top window with title in its caption, never this
 // console: started from a folder named NcStudio, its caption has the word too.
