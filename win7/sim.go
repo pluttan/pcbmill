@@ -5,7 +5,7 @@ package main
 // commands split by ';' as NcStudio 5 takes them) and moves a virtual tool at
 // the real speeds, time sped up -simspeed times; a virtual MCU reports contact
 // of that tool with a virtual copper blank. Faults are switched on from the
-// program (menu 8, F2-F7) to watch every protection stop the work. The tests
+// program (menu 8, digits 1-6 on the work screens) to watch every protection stop the work. The tests
 // drive the same machine with Speed 0: every move done at once.
 
 import (
@@ -399,17 +399,17 @@ const (
 	fCount
 )
 
-// simFaults: the F key, the short name for the status line, the description.
+// simFaults: the digit key, the short name for the status line, the description.
 var simFaults = [fCount]struct {
 	fkey        int
 	short, long string
 }{
-	{2, "МК ОТВАЛИЛСЯ", "МК отвалился: USB выдернут, ответов нет"},
-	{3, "ЗАЖИМ", "зажим отвалился: касания нет нигде"},
-	{4, "ЗАМЫКАНИЕ", "провод замкнут: касание всегда"},
-	{5, "ПРОПУСК", "станок пропустит следующий подъём Z"},
-	{6, "Z ПОЛЗЁТ", "ось Z ползёт вверх на 0.2 мкм за команду"},
-	{7, "ДРЕБЕЗГ", "дребезг и наводки на проводе"},
+	{1, "МК ОТВАЛИЛСЯ", "МК отвалился: USB выдернут, ответов нет"},
+	{2, "ЗАЖИМ", "зажим отвалился: касания нет нигде"},
+	{3, "ЗАМЫКАНИЕ", "провод замкнут: касание всегда"},
+	{4, "ПРОПУСК", "станок пропустит следующий подъём Z"},
+	{5, "Z ПОЛЗЁТ", "ось Z ползёт вверх на 0.2 мкм за команду"},
+	{6, "ДРЕБЕЗГ", "дребезг и наводки на проводе"},
 }
 
 func (s *simMachine) On(f simFault) bool {
@@ -476,11 +476,10 @@ func (s *simMachine) Faults() []string {
 }
 
 // faultKey is the fault an F key switches, or false.
+// faultKey: digits 1-6 switch the faults, on the screens that let them (faultKeys).
 func faultKey(k Key) (simFault, bool) {
-	for f := simFault(0); f < fCount; f++ {
-		if k.Code == KeyF(simFaults[f].fkey) {
-			return f, true
-		}
+	if k.Code == KeyRune && k.R >= '1' && int(k.R-'1') < int(fCount) {
+		return simFault(k.R - '1'), true
 	}
 	return 0, false
 }

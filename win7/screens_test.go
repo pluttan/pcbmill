@@ -181,18 +181,19 @@ func TestManualTouchingBlocks(t *testing.T) {
 		t.Fatalf("PageUp при касании: %s", sent(sm))
 	}
 	sm.state = true
-	s.key(k(KeyHome))
+	s.key(runeKey(' '))
 	if len(sm.lines) != 2 || !strings.Contains(sm.lines[1], "G91 G00 Z0.1000") {
-		t.Fatalf("Home при касании: %s", sent(sm))
+		t.Fatalf("пробел при касании: %s", sent(sm))
 	}
 }
 
 func TestManualDeadMCU(t *testing.T) {
 	sm, nc, _ := setup()
 	s := manualOn(t, deadTouch{}, sm, nc)
-	for _, c := range []KeyCode{KeyLeft, KeyRight, KeyUp, KeyDown, KeyPgDn, KeyHome} {
+	for _, c := range []KeyCode{KeyLeft, KeyRight, KeyUp, KeyDown, KeyPgDn} {
 		s.key(k(c))
 	}
+	s.key(runeKey(' '))
 	if len(sm.lines) != 0 {
 		t.Fatalf("без живого МК ушли команды: %s", sent(sm))
 	}
@@ -224,14 +225,14 @@ func TestManualMoves(t *testing.T) {
 			t.Fatalf("%d: %q, ждали %q", i, sm.lines[i], w)
 		}
 	}
-	// steps by keys: [ ] for Z, < > for X/Y, both on the Russian layout too
-	s.key(runeKey(']'))
-	s.key(runeKey('ъ'))
-	s.key(runeKey('>'))
+	// steps by keys: * / for Z, + - for X/Y (the same keys on both layouts)
+	s.key(runeKey('*'))
+	s.key(runeKey('*'))
+	s.key(runeKey('+'))
 	if s.step != 0.5 || s.stepX != 2 || s.stepY != 2 {
 		t.Fatal(s.step, s.stepX, s.stepY)
 	}
-	s.key(runeKey('б'))
+	s.key(runeKey('-'))
 	if s.stepX != 1 {
 		t.Fatal(s.stepX)
 	}
@@ -247,7 +248,7 @@ func TestManualMoves(t *testing.T) {
 		t.Fatal(sent(sm))
 	}
 	// Esc closes the command line, not the mode
-	if !s.key(runeKey(':')) || !s.key(k(KeyEsc)) || s.cmd != nil {
+	if !s.key(k(KeyTab)) || !s.key(k(KeyEsc)) || s.cmd != nil {
 		t.Fatal("Esc в строке команды")
 	}
 	if s.key(k(KeyEsc)) {
@@ -261,14 +262,14 @@ func TestManualGcodeConfirm(t *testing.T) {
 	sm.z = 5
 	f := term.(*fakeTerm)
 	f.keys = keys(KeyEnter) // the dialog: Нет is chosen at first
-	for _, x := range keys(":", "g g0 x1", KeyEnter) {
+	for _, x := range keys(KeyTab, "g g0 x1", KeyEnter) {
 		s.key(x)
 	}
 	if len(sm.lines) != 0 {
 		t.Fatalf("без подтверждения ушло: %s", sent(sm))
 	}
 	f.keys = keys("д")
-	for _, x := range keys(":", "g g0 x1", KeyEnter) {
+	for _, x := range keys(KeyTab, "g g0 x1", KeyEnter) {
 		s.key(x)
 	}
 	if len(sm.lines) != 1 || sm.lines[0] != "G0 X1" {

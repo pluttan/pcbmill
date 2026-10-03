@@ -467,7 +467,7 @@ func statusLine(st Status, w int) []string {
 			"  " + state
 		sim := []string{pos}
 		if len(s.Faults) == 0 {
-			sim = append(sim, paint(cHint, "сбоев нет, F2-F7"))
+			sim = append(sim, paint(cHint, "сбоев нет"))
 		}
 		for _, f := range s.Faults {
 			sim = append(sim, alarmBadge(f))

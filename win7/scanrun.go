@@ -144,6 +144,8 @@ func cmdScan(o opts) error {
 	var once sync.Once
 	stop := func() { once.Do(func() { close(stopTick); <-ticked }) } // before any dialog
 	defer stop()
+	stopFaults := faultKeysOn(func() bool { return true })
+	defer stopFaults()
 	rows, err := sc.Grid(pts, func(pt Point) {
 		fmt.Fprintf(f, "%.3f,%.3f,%.4f\n", pt.X, pt.Y, pt.Z)
 		f.Sync()

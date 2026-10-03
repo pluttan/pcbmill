@@ -70,7 +70,7 @@ func (s *manual) do(raw string) bool {
 		}
 	case in == "d" || in == "dd":
 		if s.touching() {
-			sayBad("фреза касается меди: вниз нельзя, сначала вверх (Home)")
+			sayBad("фреза касается меди: вниз нельзя, сначала вверх (пробел или PageUp)")
 			return true
 		}
 		if err = nc.Grab(); err == nil {
@@ -126,7 +126,7 @@ func (s *manual) do(raw string) bool {
 		return true
 	case in == "x+" || in == "x-" || in == "y+" || in == "y-":
 		if s.touching() {
-			sayBad("фреза касается меди: сначала вверх (Home или PageUp), потом по X/Y")
+			sayBad("фреза касается меди: сначала вверх (пробел или PageUp), потом по X/Y")
 			return true
 		}
 		d := s.stepX
@@ -251,38 +251,26 @@ func (s *manual) command(k Key) string {
 		return "lift"
 	case KeyPgDn:
 		return "d"
-	case KeyHome:
-		return "u"
 	case KeyEsc, KeyCtrlC:
 		return "q"
 	case KeyRune:
 		switch k.R { // the shifted keys first: latin() would map Russian capitals to brackets
-		case '+':
+		case ' ':
 			return "u"
-		case '-':
-			return "d"
-		case '{':
-			return "sz " + num(nextStep(fastSteps, s.stepFast, -1))
-		case '}':
-			return "sz " + num(nextStep(fastSteps, s.stepFast, 1))
-		case '<':
-			return "sxy-"
-		case '>':
+		case '+', '=':
 			return "sxy+"
+		case '-', '_':
+			return "sxy-"
+		case '*':
+			return "s " + num(nextStep(zSteps, s.step, 1))
+		case '/':
+			return "s " + num(nextStep(zSteps, s.step, -1))
 		}
 		switch k.letter() {
 		case 'q':
 			return "q"
 		case 't':
 			return "t"
-		case '[':
-			return "s " + num(nextStep(zSteps, s.step, -1))
-		case ']':
-			return "s " + num(nextStep(zSteps, s.step, 1))
-		case ',':
-			return "sxy-"
-		case '.':
-			return "sxy+"
 		}
 	}
 	return ""
@@ -304,7 +292,7 @@ func (s *manual) key(k Key) bool {
 		}
 		return true
 	}
-	if k.Code == KeyTab || (k.Code == KeyRune && (k.R == ':' || k.R == ';' || k.R == 'Ж' || k.R == 'ж')) {
+	if k.Code == KeyTab {
 		s.cmd = newField("")
 		return true
 	}
@@ -353,13 +341,12 @@ func (s *manual) keys() [][2]string {
 	return [][2]string{
 		{"← → ↑ ↓", fmt.Sprintf("X/Y на шаг %s / %s", num(s.stepX), num(s.stepY))},
 		{"PageUp", fmt.Sprintf("Z быстро вверх на %s", num(s.stepFast))},
-		{"Home +", fmt.Sprintf("Z вверх на %s", num(s.step))},
-		{"PageDown -", fmt.Sprintf("Z вниз на %s медленно", num(s.step))},
+		{"PageDown", fmt.Sprintf("Z вниз на %s медленно", num(s.step))},
+		{"Пробел", fmt.Sprintf("Z вверх на %s", num(s.step))},
 		{"T", fmt.Sprintf("вниз до меди, не глубже %s", num(s.o.search))},
-		{"[ ]", "шаг Z меньше / больше"},
-		{"< >", "шаг X/Y меньше / больше"},
-		{"{ }", "шаг быстрого Z"},
-		{": Tab", "строка команды: m, g, t, s"},
+		{"+ -", "шаг X/Y больше / меньше"},
+		{"* /", "шаг Z больше / меньше"},
+		{"Tab", "строка команды: m, g, t, sz"},
 		{"Esc Q", "назад в меню"},
 	}
 }
@@ -412,7 +399,7 @@ func (s *manual) view(w, h int) []string {
 	if len(body) > rows { // a low window: the key list goes first
 		body = stack(state, journal, cmd)
 	}
-	hint := hints(w, "Esc", "в меню", ": Tab", "команда", "PageUp", "вверх")
+	hint := hints(w, "Esc", "в меню", "Tab", "команда", "PageUp", "вверх")
 	if s.cmd != nil {
 		hint = hints(w, "Enter", "выполнить", "Esc", "закрыть строку")
 	}
@@ -439,6 +426,7 @@ func cmdManual(o opts) error {
 		sayOK(strip(mcuAt(name)))
 	}
 	term.Flush()
+	defer faultKeysOn(func() bool { return s.cmd == nil })() // digits go to an open command line
 	run(s.view, s.keyDone, 200*time.Millisecond)
 	return nil
 }

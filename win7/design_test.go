@@ -133,8 +133,8 @@ func TestSimPanel(t *testing.T) {
 			t.Fatalf("%s осталась", simFaults[f].short)
 		}
 	}
-	if f, ok := faultKey(k(KeyF(3))); !ok || f != fClip {
-		t.Fatal("F3")
+	if f, ok := faultKey(runeKey('2')); !ok || f != fClip {
+		t.Fatal("2")
 	}
 	// the menu has the item 8 only in emulation
 	useTerm(t, 80, 25)

@@ -31,7 +31,7 @@ var mainMenu = []menuEntry{
 
 // simEntry is the menu item of the emulation, there only when it is on.
 var simEntry = menuEntry{"8", "Эмуляция: станок и неисправности",
-	"Виртуальный станок: где фреза, и неисправности для проверки защит (их же включают F2-F7)."}
+	"Виртуальный станок: где фреза, и неисправности для проверки защит (на экранах работы их же включают цифры 1-6)."}
 
 // menuItems is the main menu; in emulation one more item at the end.
 func menuItems() []menuEntry {

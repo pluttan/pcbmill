@@ -44,6 +44,7 @@ func cmdWire(o opts) error {
 		p.keys = []string{"Esc", "в меню"}
 	})
 	backToConsole()
+	defer faultKeysOn(func() bool { return true })()
 	last, since, start := !m.State(), "-", m.Hits()
 	for {
 		if e := m.Alive(); e != nil {

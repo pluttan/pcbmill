@@ -2,13 +2,22 @@ package main
 
 // The emulation on screen: the virtual machine and MCU stand in for the real
 // ones in every menu item, the head bar says ЭМУЛЯЦИЯ, the status line shows
-// where the virtual NcStudio has the tool, and menu item 8 or F2-F7 switch
+// where the virtual NcStudio has the tool, and menu item 8 or the digits 1-6 on the work screens switch
 // the faults the protections are there for.
 
 import (
 	"fmt"
 	"time"
 )
+
+// faultKeys says whether the digits switch faults on the screen now: on the
+// scan, manual and wire screens, not where digits pick items or are typed.
+var faultKeys func() bool
+
+func faultKeysOn(on func() bool) func() {
+	faultKeys = on
+	return func() { faultKeys = nil }
+}
 
 // simM is the virtual machine and MCU when the program runs in emulation.
 var simM *simMachine
@@ -26,6 +35,9 @@ func startSim(o opts) {
 	simM.Reset()
 	ncWindows = simWindows
 	keyHook = func(k Key) bool {
+		if faultKeys == nil || !faultKeys() {
+			return false
+		}
 		f, ok := faultKey(k)
 		if ok {
 			simM.Toggle(f)
@@ -133,12 +145,12 @@ func (p *simPanel) view(w, h int) []string {
 			if simM.On(simFault(i)) {
 				mark = "[√]"
 			}
-			t = fmt.Sprintf("F%d  %s  %s", simFaults[i].fkey, mark, simFaults[i].long)
+			t = fmt.Sprintf("%d  %s  %s", simFaults[i].fkey, mark, simFaults[i].long)
 		case i == simReset:
 			lines = append(lines, sep)
-			t = "     Фрезу в начало: X0 Y0, 1.5 мм над медью"
+			t = "   Фрезу в начало: X0 Y0, 1.5 мм над медью"
 		case i == simClear:
-			t = "     Выключить все неисправности"
+			t = "   Выключить все неисправности"
 		}
 		if i == p.sel {
 			lines = append(lines, sel(t))
@@ -161,7 +173,7 @@ func (p *simPanel) view(w, h int) []string {
 		body = faults
 	}
 	return screen(w, h, menuTitle("8"), body,
-		hints(w, "↑↓", "выбор", "Enter", "вкл / выкл", "F2-F7", "сразу", "Esc", "в меню"))
+		hints(w, "↑↓", "выбор", "Enter", "вкл / выкл", "1-6", "сразу", "Esc", "в меню"))
 }
 
 // cmdSim is menu item 8: the virtual machine and its faults.
