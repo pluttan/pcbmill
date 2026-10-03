@@ -325,7 +325,7 @@ func status(o opts) Status {
 }
 
 var commands = map[string]func(opts) error{
-	"1": cmdGerber, "2": cmdWire, "3": cmdNcTest, "4": cmdScan, "5": cmdZero, "6": cmdLevel, "7": cmdManual,
+	"2": cmdWire, "3": cmdNcTest, "4": cmdScan, "5": cmdZero, "6": cmdLevel, "7": cmdManual,
 	"8": cmdFindCoords, "9": cmdSim,
 }
 
@@ -367,27 +367,5 @@ func main() {
 		}
 	}()
 	statusFn = func() Status { return statusCached(o) }
-	if a := flag.Args(); len(a) > 0 { // a zip of a board dropped onto the exe
-		curHead = menuTitle("1")
-		if err := gerberFrom(a[0]); err != nil {
-			alert(err)
-		}
-	}
-	nav := newMenuNav(menuItems())
-	for {
-		cur, curHead = nil, ""
-		switch c := menuChoice(nav); c {
-		case "quit":
-			return
-		case "0":
-			if confirm("Выйти из pcbscan?") {
-				return
-			}
-		default:
-			curHead = menuTitle(c)
-			if err := commands[c](o); err != nil && err != errBack {
-				alert(err)
-			}
-		}
-	}
+	jobMain(o)
 }

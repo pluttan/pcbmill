@@ -19,29 +19,31 @@ func TestCamSamples(t *testing.T) {
 		if err != nil {
 			t.Fatal(name, err)
 		}
-		c := defaultCam()
-		c.Side, c.DrillMode = sideBoth, drillBoth
-		ops := camRun(b, c, func(string) {})
 		kinds := map[string]bool{}
-		for _, op := range ops {
-			kinds[strings.SplitN(op.file, "_", 3)[1]] = true
-			lines := op.gcode()
-			if lines[0] != "T1M6" || lines[len(lines)-1] != "M30" {
-				t.Errorf("%s %s: начало %q конец %q", name, op.file, lines[0], lines[len(lines)-1])
+		for _, side := range []int{sideTop, sideBottom} {
+			c := defaultCam()
+			c.Side, c.DrillMode = side, drillBoth
+			for _, raw := range camBoard(b, c, func(string) {}) {
+				op := placeOp(raw, []place{{box: b.box, mirror: side == sideBottom}})
+				kinds[strings.SplitN(op.file, "_", 3)[1]] = true
+				lines := op.gcode()
+				if lines[0] != "T1M6" || lines[len(lines)-1] != "M30" {
+					t.Errorf("%s %s: начало %q конец %q", name, op.file, lines[0], lines[len(lines)-1])
+				}
+				if _, err := ApplyMap(lines, hm, 1); err != nil {
+					t.Errorf("%s %s: %v", name, op.file, err)
+				}
+				x0, x1, y0, y1, err := CutBounds(lines)
+				if err != nil {
+					t.Errorf("%s %s: %v", name, op.file, err)
+				}
+				bw, bh := b.box.X1-b.box.X0, b.box.Y1-b.box.Y0
+				if x0 < -0.5 || y0 < -0.5 || x1 > bw+0.5 || y1 > bh+0.5 {
+					t.Errorf("%s %s: рез X %.2f..%.2f Y %.2f..%.2f за платой %.1f x %.1f", name, op.file, x0, x1, y0, y1, bw, bh)
+				}
+				cut, min := op.minutes()
+				t.Logf("%s %-14s путей %4d строк %6d рез %6.0f мм %5.1f мин %v %v", name, op.file, len(op.paths), len(lines), cut, min, op.notes, op.warn)
 			}
-			if _, err := ApplyMap(lines, hm, 1); err != nil {
-				t.Errorf("%s %s: %v", name, op.file, err)
-			}
-			x0, x1, y0, y1, err := CutBounds(lines)
-			if err != nil {
-				t.Errorf("%s %s: %v", name, op.file, err)
-			}
-			bw, bh := b.box.X1-b.box.X0, b.box.Y1-b.box.Y0
-			if op.file != "3_mask_probe" && (x0 < -0.5 || y0 < -0.5 || x1 > bw+0.5 || y1 > bh+0.5) {
-				t.Errorf("%s %s: рез X %.2f..%.2f Y %.2f..%.2f за платой %.1f x %.1f", name, op.file, x0, x1, y0, y1, bw, bh)
-			}
-			cut, min := op.minutes()
-			t.Logf("%s %-14s путей %4d строк %6d рез %6.0f мм %5.1f мин %v %v", name, op.file, len(op.paths), len(lines), cut, min, op.notes, op.warn)
 		}
 		for _, k := range []string{"iso", "drill", "vcut"} {
 			if !kinds[k] {
@@ -99,7 +101,7 @@ func TestIsoClearance(t *testing.T) {
 	}
 	field := r.distTo(1, nil)
 	near := func(q pt) float64 { // mm from the copper, at a table point
-		x, y := q.X+b.box.X0, q.Y+b.box.Y0
+		x, y := q.X, q.Y
 		i, j := int(math.Round(r.col(x))), int(math.Round(r.row(y)))
 		return (float64(field[j*r.w+i])/distScale - 0.5) * r.px
 	}
@@ -142,13 +144,9 @@ func TestIsoClearance(t *testing.T) {
 // arrows keep values on their steps and in their limits, and the numbers
 // come back from the file next to the exe.
 func TestCamForm(t *testing.T) {
-	b, err := loadBoard(boardSamples(t)["2032Charger"])
-	if err != nil {
-		t.Fatal(err)
-	}
 	for _, sz := range sizes {
 		useTerm(t, sz[0], sz[1])
-		f := &camForm{b: b, c: defaultCam()}
+		f := &camForm{c: defaultCam()}
 		for i := 0; i < f.count(); i++ {
 			fr := f.view(sz[0], sz[1])
 			if len(fr) != sz[1] {
@@ -167,11 +165,8 @@ func TestCamForm(t *testing.T) {
 			}
 			f.key(k(KeyDown))
 		}
-		if sz[0] >= 100 && !strings.Contains(plainFrame(f.view(sz[0], sz[1])), "█") {
-			t.Errorf("%v: нет картинки платы\n%s", sz, plainFrame(f.view(sz[0], sz[1])))
-		}
 	}
-	f := &camForm{b: b, c: defaultCam()}
+	f := &camForm{c: defaultCam()}
 	f.sel = 3 // the depth of isolation
 	for i := 0; i < 50; i++ {
 		f.key(k(KeyLeft))

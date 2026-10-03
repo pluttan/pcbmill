@@ -69,46 +69,51 @@ func cmdScan(o opts) error {
 	if !ok {
 		return nil
 	}
-	pts := g.Points()
-	p := newPage(menuTitle("4"), "Ищу МК на COM-портах...")
+	_, err = scanRun(o, menuTitle("4"), g.Points(), filepath.Join(exeDir(), "scan.csv"), &cut,
+		func(w, r int) []string { return gridViewRows(g, &cut, w, r) },
+		func(done []Point, blink bool, w, r int) []string { return scanView(g, &cut, done, blink, w, r) })
+	return err
+}
+
+// scanRun: the scan of pts (the first is where Z is zeroed) into out, with
+// before the picture of the points and during the picture of the progress;
+// the height map at the end, nil when the operator said no.
+func scanRun(o opts, title string, pts [][2]float64, out string, cut *rect,
+	before func(w, rows int) []string, during func(done []Point, blink bool, w, rows int) []string) (*HeightMap, error) {
+	p := newPage(title, "Ищу МК на COM-портах...")
 	m, name, err := findTouch(o.port)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	p.set(func() {
 		p.head = "Перед обходом"
 		p.info = []string{
-			fmt.Sprintf("%s. Точек %s, примерно %s.", mcuAt(name), paint(cTitle, fmt.Sprint(len(pts))),
-				val(fmt.Sprintf("%.0f", float64(len(pts))*secondsPerPoint/60), "мин")),
-			"В NcStudio ноль X0 Y0 стоит как для этой платы, шпиндель выключен,",
-			fmt.Sprintf("фреза (любая крепкая) на 1-2 мм над медью рядом с %s.",
-				paint(cZero, fmt.Sprintf("♦ X%.1f Y%.1f", pts[0][0], pts[0][1]))),
+			fmt.Sprintf("%s. Точек %d, примерно %.0f мин.", mcuAt(name), len(pts), float64(len(pts))*secondsPerPoint/60),
+			"В NcStudio ноль X0 Y0 стоит в углу листа, шпиндель выключен,",
+			fmt.Sprintf("фреза (любая крепкая) на 1-2 мм над медью у первой точки ♦ X%.1f Y%.1f.", pts[0][0], pts[0][1]),
 			fmt.Sprintf("Не выше 2 мм: в первой точке медь ищется на %.0f мм вниз от старта.", o.search),
 			sep,
-			paint(cAlarm, "▲ Сейчас ОБНУЛИТЕ Z в NcStudio на этой высоте:") + " обход ведёт Z абсолютными командами от этого нуля.",
+			"▲ Сейчас ОБНУЛИТЕ Z в NcStudio на этой высоте: обход ведёт Z абсолютными командами от этого нуля.",
 		}
-		p.pic = func(w, h int) []string {
-			return fitRows(h, func(r int) []string { return gridViewRows(g, &cut, w, r) })
-		}
+		p.pic = func(w, h int) []string { return fitRows(h, func(r int) []string { return before(w, r) }) }
 	})
 	if !confirm("Z обнулён, начать обход?") {
-		return nil
+		return nil, nil
 	}
 	if simM != nil {
 		simM.ZeroZ() // what the operator has done in NcStudio
-		logLine(paint(cHint, "эмуляция: Z обнулён в NcStudio на высоте старта"))
+		logLine("эмуляция: Z обнулён в NcStudio на высоте старта")
 	}
-	out := filepath.Join(exeDir(), "scan.csv")
 	f, err := os.Create(out)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer f.Close()
 	fmt.Fprintf(f, "# x,y,z  pcbscan, Z от высоты старта\n")
 	nc := newNc(o)
 	nc.Abs = true
 	if err := nc.Grab(); err != nil {
-		return err
+		return nil, err
 	}
 	sc := newScanner(o, escStop{nc}, m)
 	sc.Predict = true // nc.Abs above
@@ -123,7 +128,7 @@ func cmdScan(o opts) error {
 			p.keys = p.keys[:2]
 		}
 		p.pic = func(w, h int) []string {
-			return fitRows(h, func(r int) []string { return scanView(g, &cut, done, blink, w, r) })
+			return fitRows(h, func(r int) []string { return during(done, blink, w, r) })
 		}
 	})
 	sc.Log = func(l string) { p.set(func() { last = l; p.log = append(p.log, l); refresh() }) }
@@ -157,7 +162,7 @@ func cmdScan(o opts) error {
 		if confirm(fmt.Sprintf("Поднять фрезу на %.1f мм?", o.clear), "NcStudio снова получит фокус.") && nc.Grab() == nil {
 			nc.RapidZ(nc.z + o.clear)
 		}
-		return fmt.Errorf("карта не досняна: %v. В scan.csv измеренные точки", err)
+		return nil, fmt.Errorf("карта не досняна: %v. В %s измеренные точки", err, filepath.Base(out))
 	}
 	p.set(func() {
 		phase = "Повторное касание первой точки: насколько всё уехало за время обхода..."
@@ -165,18 +170,21 @@ func cmdScan(o opts) error {
 	})
 	drift, err := sc.Recheck(rows)
 	if err != nil {
-		return fmt.Errorf("повторное касание не удалось, карте верить нельзя: %v", err)
+		return nil, fmt.Errorf("повторное касание не удалось, карте верить нельзя: %v", err)
 	}
 	fmt.Fprintf(f, "# повторное касание первой точки: сдвиг %+.4f мм\n", drift)
 	hm, _ := MapFromPoints(rows)
-	info := []string{"Сдвиг первой точки за обход: " + paint(cTitle, fmt.Sprintf("%+.3f мм", drift))}
+	info := []string{fmt.Sprintf("Сдвиг первой точки за обход: %+.3f мм", drift)}
 	if math.Abs(drift) > 0.03 {
-		info = append(info, paint(cAlarm, "▲ ВНИМАНИЕ:")+" больше 0.03 мм. Ось Z уходит во время работы или станок "+
+		info = append(info, "▲ ВНИМАНИЕ: больше 0.03 мм. Ось Z уходит во время работы или станок "+
 			"пропускает команды: по этой карте резать нельзя. Проверьте механику Z и повторите.")
 	} else {
-		info = append(info, paint(cOK, "√ Сдвиг в норме, карте можно верить."))
+		info = append(info, "√ Сдвиг в норме, карте можно верить.")
 	}
-	info = append(info, paint(cOK, "√ Карта записана: ")+filepath.Base(out)+paint(cHint, " рядом с программой"))
-	mapResult(menuTitle("4")+": готово", hm, &cut, info)
-	return nil
+	info = append(info, "√ Карта записана: "+filepath.Base(out))
+	mapResult(title+": готово", hm, cut, info)
+	if math.Abs(drift) > 0.03 {
+		return nil, fmt.Errorf("сдвиг первой точки %+.3f мм: карта не годится, снимите заново", drift)
+	}
+	return hm, nil
 }

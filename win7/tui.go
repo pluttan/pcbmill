@@ -57,7 +57,13 @@ const (
 
 func ink(c int) string { return string([]byte{esc, byte('A' + c)}) }
 
-func paint(c int, s string) string { return ink(c) + s + plain }
+// paint: text has one colour, the console's own; the colour argument says
+// what the text is and stays for reading the code. Only pictures are
+// coloured (tint): the boards, the sheet, the height map.
+func paint(c int, s string) string { return s }
+
+// tint colours a piece of a picture.
+func tint(c int, s string) string { return ink(c) + s + plain }
 
 // A background mark is ESC and 'a'+colour; '0' resets it too.
 func bgInk(c int) string { return string([]byte{esc, byte('a' + c)}) }
@@ -65,11 +71,11 @@ func bgInk(c int) string { return string([]byte{esc, byte('a' + c)}) }
 // on draws s in colour fg on background bg; marks inside s are dropped.
 func on(fg, bg int, s string) string { return bgInk(bg) + ink(fg) + strip(s) + plain }
 
-// The selected line of a menu, a chosen button: black on a cyan bar. The bars
+// The selected line of a menu, a chosen button: white on a dark grey bar, as in yazi. The bars
 // at the top and bottom of the screen: black on grey.
 const (
-	cSelBg = cCyan
-	cSelFg = cBlack
+	cSelBg = cDark
+	cSelFg = cWhite
 	cBarBg = cGray
 	cBarFg = cBlack
 )
@@ -77,8 +83,8 @@ const (
 // hilite draws s as selected; colour marks inside s are dropped.
 func hilite(s string) string { return on(cSelFg, cSelBg, s) }
 
-// badge is a state in a coloured box: " ОК ", " КОНТАКТ ", " НЕТ СВЯЗИ ".
-func badge(fg, bg int, s string) string { return on(fg, bg, " "+s+" ") }
+// badge is a state in brackets: [ОК], [КОНТАКТ], [НЕТ СВЯЗИ].
+func badge(fg, bg int, s string) string { return "[" + s + "]" }
 
 func okBadge(s string) string    { return badge(cBlack, cLightGreen, s) }
 func touchBadge(s string) string { return badge(cBlack, cYellow, s) }
@@ -429,13 +435,13 @@ type Status struct {
 func mcuBadge(s mcuState) string {
 	switch s {
 	case mcuOpen:
-		return okBadge("ОК")
+		return "[ОК]"
 	case mcuContact:
-		return touchBadge("КОНТАКТ")
+		return "[КОНТАКТ]"
 	case mcuDead:
-		return alarmBadge("НЕТ СВЯЗИ")
+		return "[НЕТ СВЯЗИ]"
 	}
-	return offBadge("НЕ ОТКРЫТ")
+	return "[НЕ ОТКРЫТ]"
 }
 
 // flow joins cells with three spaces and breaks between cells when too long.
@@ -466,25 +472,24 @@ func flow(cells []string, w int) []string {
 }
 
 // edgeStatus is the state of the work for the top edge of the frame, short:
-// a coloured mark before МК and NcStudio (green fine, yellow contact, red no
-// answer, grey not open / not found), the faults switched on in emulation.
+// МК and NcStudio with √ when they answer, the faults switched on in emulation.
 func edgeStatus(st Status) string {
-	mc := cDark
+	mc := "МК -"
 	switch st.MCU {
 	case mcuOpen:
-		mc = cLightGreen
+		mc = "МК √"
 	case mcuContact:
-		mc = cYellow
+		mc = "МК ♦ касание"
 	case mcuDead:
-		mc = cLightRed
+		mc = "МК нет связи"
 	}
-	nc := cDark
+	nc := "NcStudio -"
 	if st.Nc {
-		nc = cLightGreen
+		nc = "NcStudio √"
 	}
-	s := paint(mc, "■") + " МК   " + paint(nc, "■") + " NcStudio"
+	s := mc + "   " + nc
 	if st.Sim != nil && len(st.Sim.Faults) > 0 {
-		s += "   " + paint(cAlarm, fmt.Sprintf("▲ сбоев %d", len(st.Sim.Faults)))
+		s += fmt.Sprintf("   ▲ сбоев %d", len(st.Sim.Faults))
 	}
 	return s
 }

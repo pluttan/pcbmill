@@ -1,17 +1,11 @@
 package main
 
-// The main screen: the logo, the menu in the middle of the window, a line
-// about the chosen item under it, the status line on top.
-
-import "time"
+// The service commands under the job: their names for the head of their pages.
 
 // menuEntry: key "" is a rule between groups.
 type menuEntry struct{ key, text, about string }
 
 var mainMenu = []menuEntry{
-	{"1", "Программы из Gerber",
-		"Zip платы из KiCad, EasyEDA, Eagle: изоляция фрезой 0.1, сверловка, вскрытие маски, V-рез по контуру."},
-	{"", "", ""},
 	{"2", "Проверить провод (МК)",
 		"Касайтесь зажимом фрезы: на экране КОНТАКТ или разомкнуто и счётчик касаний. Станок не двигается."},
 	{"3", "Проверить связь с NcStudio",
@@ -45,142 +39,11 @@ func menuItems() []menuEntry {
 	return append(items, simEntry, menuEntry{"", "", ""}, mainMenu[len(mainMenu)-1])
 }
 
-// menuNav walks the items with the arrows; rules are skipped, the ends wrap.
-type menuNav struct {
-	items []menuEntry
-	sel   int
-}
-
-func newMenuNav(items []menuEntry) *menuNav {
-	m := &menuNav{items: items}
-	for m.items[m.sel].key == "" {
-		m.sel++
-	}
-	return m
-}
-
-func (m *menuNav) move(d int) {
-	n := len(m.items)
-	for i := 0; i < n; i++ {
-		m.sel = (m.sel + d + n) % n
-		if m.items[m.sel].key != "" {
-			return
-		}
-	}
-}
-
-// key returns the key of the item chosen; "quit" for Ctrl+C from a pipe.
-func (m *menuNav) key(k Key) (string, bool) {
-	switch k.Code {
-	case KeyUp, KeyBackTab:
-		m.move(-1)
-	case KeyDown, KeyTab:
-		m.move(1)
-	case KeyHome:
-		m.sel = len(m.items) - 1
-		m.move(1)
-	case KeyEnd:
-		m.sel = 0
-		m.move(-1)
-	case KeyEnter:
-		return m.items[m.sel].key, true
-	case KeyEsc:
-		return "0", true
-	case KeyCtrlC:
-		return "quit", true
-	case KeyRune:
-		for i, it := range m.items {
-			if it.key != "" && it.key == string(k.R) {
-				m.sel = i
-				return it.key, true
-			}
-		}
-	}
-	return "", false
-}
-
-// logo is the name over the menu; the short one for low windows.
-func logo(w int, short bool) []string {
-	if short {
-		return []string{center(paint(cTitle, "pcbscan")+paint(cHint, "  карта высот для NcStudio"), w)}
-	}
-	return []string{
-		center(paint(cTitle, "p c b s c a n"), w),
-		center(paint(cHint, "карта высот платы для NcStudio"), w),
-	}
-}
-
-func (m *menuNav) view(w, h int) []string {
-	bw := colW(w)
-	if bw > 60 {
-		bw = 60
-	}
-	rows := room(w, h)
-	var body []string
-	for _, rules := range []bool{true, false} {
-		var lines []string
-		for i, it := range m.items {
-			if it.key == "" {
-				if rules {
-					lines = append(lines, sep)
-				}
-				continue
-			}
-			if i == m.sel {
-				lines = append(lines, sel("► "+it.key+"   "+it.text))
-			} else {
-				lines = append(lines, "  "+paint(cKey, it.key)+"   "+it.text)
-			}
-		}
-		about := wrap(m.items[m.sel].about, bw-4, 0)
-		if len(about) > 2 {
-			about = about[:2]
-		}
-		for len(about) < 2 {
-			about = append(about, "")
-		}
-		for i := range about {
-			about[i] = center(paint(cHint, about[i]), bw)
-		}
-		menu := box(thin, "Меню", lines, bw)
-		for _, short := range []bool{false, true} {
-			body = stack(logo(bw, short), menu, about)
-			if len(body) <= rows-2 { // a free line above and under at least
-				return screen(w, h, "главное меню", body, menuHint(w, len(m.items)))
-			}
-		}
-		if body = stack(menu, about); len(body) <= rows {
-			return screen(w, h, "главное меню", body, menuHint(w, len(m.items)))
-		}
-	}
-	return screen(w, h, "главное меню", body, menuHint(w, len(m.items)))
-}
-
-func menuHint(w, n int) string {
-	last := "8"
-	if n > 0 && simM != nil {
-		last = "9"
-	}
-	return hints(w, "↑↓", "выбор", "Enter", "открыть", "1-"+last, "сразу", "Esc", "выход")
-}
-
-// menuChoice runs the main menu until an item is chosen; the status line is
-// refreshed twice a second meanwhile.
-func menuChoice(m *menuNav) string {
-	res := ""
-	run(m.view, func(k Key) bool {
-		var done bool
-		res, done = m.key(k)
-		return done
-	}, 500*time.Millisecond)
-	return res
-}
-
-// menuTitle is the heading of a command's page: "3 ► Снять карту высот".
+// menuTitle is the heading of a command's page: "сервис / Ручной режим".
 func menuTitle(key string) string {
 	for _, it := range menuItems() {
 		if it.key == key {
-			return key + "  " + it.text
+			return "сервис / " + it.text
 		}
 	}
 	return key

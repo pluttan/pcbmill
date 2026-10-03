@@ -117,7 +117,7 @@ func (d *dialog) box(w int) []string {
 		if i == d.sel { // the arrows show the choice without colours too
 			bs = append(bs, hilite("► "+center(b, bwid)+" ◄"))
 		} else {
-			bs = append(bs, on(cWhite, cDark, "  "+center(b, bwid)+"  "))
+			bs = append(bs, "  "+center(b, bwid)+"  ")
 		}
 	}
 	body = append(body, center(strings.Join(bs, "   "), in), "")
@@ -163,6 +163,64 @@ func confirm(q string, more ...string) bool {
 	d := &dialog{title: "Вопрос", text: append([]string{paint(cTitle, q)}, more...),
 		buttons: []string{"Да", "Нет"}, sel: 1, cancel: 1}
 	return d.show() == 0
+}
+
+// askYes: the operator types yes and Enter to go on; anything else, Esc
+// included, is no. Typing a word, not one key, so a key pressed by chance
+// never starts anything.
+func askYes(title string, text ...string) bool {
+	base := backdrop
+	defer func() { backdrop = base }()
+	in := newField("")
+	msg := ""
+	view := func(w, h int) []string {
+		body := append([]string(nil), text...)
+		body = append(body, "", "Напечатайте yes и Enter:  "+in.view(8))
+		if msg != "" {
+			body = append(body, msg)
+		}
+		bw := blockWidth(body) + 2 + 2*pad
+		if bw < 52 {
+			bw = 52
+		}
+		if bw > 76 {
+			bw = 76
+		}
+		if bw > w-2 {
+			bw = w - 2
+		}
+		b := boxC(outer, cWhite, title, append([]string{""}, append(body, "")...), bw)
+		b[len(b)-1] = bottomEdge(cWhite, hints(bw, "Enter", "ответ", "Esc", "нет"), bw)
+		if base == nil {
+			return screen(w, h, curHead, b, "")
+		}
+		return overlay(base(w, h), b, w, h)
+	}
+	ok := false
+	run(view, func(k Key) bool {
+		done, cancel := in.key(k)
+		if cancel || k.Code == KeyCtrlC {
+			return true
+		}
+		if !done {
+			return false
+		}
+		a := strings.ToLower(strings.TrimSpace(in.String()))
+		switch {
+		case a == "yes":
+			ok = true
+			return true
+		case a == "нуы": // yes typed on the Russian layout
+			msg = "▲ Раскладка русская: переключите на английскую и напечатайте yes."
+		case a == "":
+			msg = "Пусто. yes - да, Esc - нет."
+		default:
+			return true // a no
+		}
+		in = newField("")
+		return false
+	}, 500*time.Millisecond)
+	return ok
 }
 
 // alert shows a stop in red over the screen until Enter.

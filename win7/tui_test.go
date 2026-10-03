@@ -112,7 +112,6 @@ func TestFrames(t *testing.T) {
 	for _, w := range []int{30, 40, 60, 78, 110} {
 		closed(t, "box", box(thin, "Перед стартом", []string{long, sep, "", paint(cHint, "коротко")}, w), thin, w)
 		closed(t, "box без заголовка", box(thin, "", []string{"x"}, w), thin, w)
-		onScreen(t, "logo", logo(w, false), w)
 		closed(t, "ручной", box(thin, "Команды", twoCols(newManual(opts{search: 3}, nil, nil, "").keys(), inner(w)), w), thin, w)
 		closed(t, "выбор", box(thin, "Меню", []string{"  1   один", sel("► 2   два"), sep}, w), thin, w)
 		closed(t, "сетка", newGridForm(GridFor(0.63, 61.26, 1.8, 46.05, 10)).form(), thin, formW)
@@ -129,19 +128,19 @@ func TestFrames(t *testing.T) {
 	}
 }
 
-// The state is a coloured mark before МК and NcStudio in the top edge.
+// The state is plain text in the top edge: МК and NcStudio with √ when fine.
 func TestStatusLine(t *testing.T) {
 	for _, c := range []struct {
 		st   Status
-		mark int
+		want string
 	}{
-		{Status{}, cDark},
-		{Status{MCU: mcuOpen, Nc: true}, cLightGreen},
-		{Status{MCU: mcuContact, Nc: true}, cYellow},
-		{Status{MCU: mcuDead}, cLightRed},
+		{Status{}, "МК -   NcStudio -"},
+		{Status{MCU: mcuOpen, Nc: true}, "МК √   NcStudio √"},
+		{Status{MCU: mcuContact, Nc: true}, "МК ♦ касание   NcStudio √"},
+		{Status{MCU: mcuDead}, "МК нет связи   NcStudio -"},
 	} {
 		e := edgeStatus(c.st)
-		if !strings.HasPrefix(e, paint(c.mark, "■")+" МК") || !strings.Contains(strip(e), "NcStudio") {
+		if e != c.want {
 			t.Errorf("%v: %q", c.st, e)
 		}
 		onScreen(t, "кромка", []string{e}, 40)
@@ -149,7 +148,7 @@ func TestStatusLine(t *testing.T) {
 	statusFn = func() Status { return Status{MCU: mcuContact, Nc: true} }
 	defer func() { statusFn = nil }()
 	top := frameTop("главное меню", 70)
-	if vlen(top) != 70 || !strings.Contains(strip(top), "■ МК   ■ NcStudio") {
+	if vlen(top) != 70 || !strings.Contains(strip(top), "МК ♦ касание   NcStudio √") {
 		t.Fatalf("в кромке нет состояния: %q", strip(top))
 	}
 }

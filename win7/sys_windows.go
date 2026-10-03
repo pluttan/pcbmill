@@ -7,6 +7,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -370,6 +371,66 @@ func (k *WinKeys) Line(s string) error {
 	}
 	k.combo("enter")
 	return nil
+}
+
+// className of a window, "#32770" for a dialog box.
+func className(h uintptr) string {
+	cls := make([]uint16, 128)
+	pGetClassNameW.Call(h, uintptr(unsafe.Pointer(&cls[0])), 128)
+	return syscall.UTF16ToString(cls)
+}
+
+// openDialog: the foreground window is a dialog box of NcStudio.
+func (k *WinKeys) openDialog() (uintptr, bool) {
+	fg, _, _ := pGetForeground.Call()
+	return fg, fg != 0 && fg != k.hwnd && pidOf(fg) == pidOf(k.hwnd) && className(fg) == "#32770"
+}
+
+// Load opens the program with File, Open (Ctrl+O). The path is typed only
+// once the open dialog is there: typed into the main window the letters
+// could be keys of NcStudio. After Enter the dialog must be gone and the
+// name of the file in the title of NcStudio, or it is an error and the
+// operator opens the file by hand.
+func (k *WinKeys) Load(path string) error {
+	if err := k.Grab(); err != nil {
+		return err
+	}
+	k.combo("ctrl+o")
+	var dlg uintptr
+	for i := 0; i < 30; i++ { // up to 3 s for the dialog
+		time.Sleep(100 * time.Millisecond)
+		if h, ok := k.openDialog(); ok {
+			dlg = h
+			break
+		}
+	}
+	if dlg == 0 {
+		return fmt.Errorf("окно открытия файла не появилось по Ctrl+O: откройте файл в NcStudio сами")
+	}
+	time.Sleep(300 * time.Millisecond)
+	for _, r := range path {
+		if fg, _, _ := pGetForeground.Call(); fg != dlg {
+			return fmt.Errorf("окно открытия файла потеряло фокус: путь не допечатан, закройте его (Esc) и откройте файл сами")
+		}
+		sendKey(0, uint16(r), keyUnicode)
+		sendKey(0, uint16(r), keyUnicode|keyUp)
+		time.Sleep(k.Delay)
+	}
+	k.combo("enter")
+	for i := 0; i < 50; i++ { // up to 5 s to read the program
+		time.Sleep(100 * time.Millisecond)
+		if fg, _, _ := pGetForeground.Call(); fg == dlg {
+			continue
+		}
+		if strings.Contains(strings.ToLower(windowText(k.hwnd)), strings.ToLower(filepath.Base(path))) {
+			return nil
+		}
+	}
+	if _, ok := k.openDialog(); ok {
+		return fmt.Errorf("NcStudio не закрыла окно открытия (файл не найден?): закройте его и откройте файл сами")
+	}
+	return fmt.Errorf("в заголовке NcStudio нет %s (там \"%s\"): проверьте, какой файл загружен, или откройте его сами",
+		filepath.Base(path), windowText(k.hwnd))
 }
 
 // ==========================

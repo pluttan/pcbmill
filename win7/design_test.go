@@ -92,7 +92,7 @@ func TestSelectionBar(t *testing.T) {
 // A dialog dims the screen under it and drops a shadow right and down.
 func TestOverlayShadow(t *testing.T) {
 	useTerm(t, 80, 25)
-	base := newMenuNav(mainMenu).view(80, 25)
+	base := jobScreen(t).view(80, 25)
 	d := &dialog{title: "Вопрос", text: []string{"Начать?"}, buttons: []string{"Да", "Нет"}, sel: 1}
 	b := d.box(80)
 	fr := overlay(base, b, 80, 25)
@@ -118,13 +118,10 @@ func TestOverlayShadow(t *testing.T) {
 	if !strings.Contains(strip(fr[top+len(b)]), repeat("░", 20)) {
 		t.Fatalf("нет тени снизу: %q", strip(fr[top+len(b)]))
 	}
-	// under the dialog the menu is grey: no colour but the dim one (and the
-	// white outer frame at the sides) outside the box
+	// text has no colour, under the dialog too
 	for _, l := range fr[1 : top-1] {
-		for i := 0; i+1 < len(l); i++ {
-			if l[i] == esc && l[i+1] != '0' && l[i+1] != byte('A'+cDark) && l[i+1] != byte('A'+cFrame) {
-				t.Fatalf("фон не приглушён: %q", l)
-			}
+		if strings.IndexByte(l, esc) >= 0 && !strings.Contains(l, bgInk(cSelBg)) {
+			t.Fatalf("цветной текст: %q", l)
 		}
 	}
 }
@@ -172,11 +169,13 @@ func TestSimPanel(t *testing.T) {
 	if f, ok := faultKey(runeKey('2')); !ok || f != fClip {
 		t.Fatal("2")
 	}
-	// the menu has the item 9 only in emulation
-	useTerm(t, 80, 25)
-	fr := newMenuNav(menuItems()).view(80, 25)
-	if !strings.Contains(plainFrame(fr), "9   Эмуляция") || !strings.Contains(plainFrame(fr), "1-9") {
-		t.Fatal(plainFrame(fr))
+	// the service stage has the emulation only in emulation
+	u := jobScreen(t)
+	found := false
+	for _, n := range u.kids(6) {
+		found = found || strings.Contains(n.title, "Эмуляция")
 	}
-	centred(t, "меню эмуляции", fr, 80, "Выход")
+	if !found {
+		t.Fatal("нет пункта эмуляции в Сервисе")
+	}
 }

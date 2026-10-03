@@ -230,7 +230,7 @@ func topParts(title string) (string, string) {
 		} else {
 			right += "  "
 		}
-		right += paint(cYellow, "ЭМУЛЯЦИЯ") + " "
+		right += "ЭМУЛЯЦИЯ "
 	}
 	if right != "" {
 		right = paint(cFrame, outer.h) + right

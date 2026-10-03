@@ -194,55 +194,6 @@ func TestField(t *testing.T) {
 }
 
 // ==========================
-// ===  Main menu         ===
-// ==========================
-
-func TestMenuKeys(t *testing.T) {
-	for _, c := range []struct {
-		keys []Key
-		want string
-	}{
-		{keys(KeyDown, KeyDown, KeyEnter), "3"},
-		{keys(KeyUp, KeyEnter), "0"},                   // over the top edge to the bottom
-		{keys(KeyUp, KeyDown, KeyDown, KeyEnter), "2"}, // and back over the bottom edge
-		{keys("5"), "5"},
-		{keys(KeyDown, "0"), "0"},
-		{keys(KeyEsc), "0"},
-		{keys(KeyEnd, KeyEnter), "0"},
-		{keys(KeyDown, KeyHome, KeyEnter), "1"},
-		{keys("x", KeyDown, KeyDown, KeyDown, KeyDown, KeyDown, KeyDown, KeyEnter), "7"},
-	} {
-		useTerm(t, 80, 25, c.keys...)
-		if got := menuChoice(newMenuNav(mainMenu)); got != c.want {
-			t.Errorf("%v: пункт %q, ждали %q", c.keys, got, c.want)
-		}
-	}
-}
-
-func TestMenuScreen(t *testing.T) {
-	for _, sz := range sizes {
-		useTerm(t, sz[0], sz[1])
-		m := newMenuNav(mainMenu)
-		m.move(1)
-		m.move(1)
-		m.move(1)
-		fr := m.view(sz[0], sz[1])
-		if len(fr) != sz[1] {
-			t.Fatalf("%v: %d строк", sz, len(fr))
-		}
-		onScreen(t, "меню", fr, sz[0])
-		centred(t, "меню", fr, sz[0], "Снять карту высот")
-		selected(t, fr, "► 4   Снять карту высот")
-		all := plainFrame(fr)
-		for _, want := range []string{"Выход", "Найти координаты", "Esc", "■ МК", "сетка точек"} {
-			if !strings.Contains(all, want) {
-				t.Errorf("%v: нет %q\n%s", sz, want, all)
-			}
-		}
-	}
-}
-
-// ==========================
 // ===  Dialogs, list     ===
 // ==========================
 
@@ -262,26 +213,26 @@ func TestConfirm(t *testing.T) {
 		{keys("x", "?", KeyLeft, KeyEnter), true},
 	} {
 		f := useTerm(t, 80, 25, c.keys...)
-		backdrop = newMenuNav(mainMenu).view
+		backdrop = jobScreen(t).view
 		if got := confirm("Z обнулён, начать обход?"); got != c.want {
 			t.Errorf("%v: %v", c.keys, got)
 		}
 		all := plainFrame(f.frames[0])
-		if !strings.Contains(all, "  Да   ") || !strings.Contains(all, "► Нет ◄") || !strings.Contains(all, "Меню") {
+		if !strings.Contains(all, "  Да   ") || !strings.Contains(all, "► Нет ◄") || !strings.Contains(all, "Платы") {
 			t.Fatalf("диалог не поверх меню:\n%s", all)
 		}
 		selected(t, f.frames[0], "► Нет ◄")
 	}
 	for _, sz := range sizes {
 		f := useTerm(t, sz[0], sz[1], k(KeyEnter))
-		backdrop = newMenuNav(mainMenu).view
+		backdrop = jobScreen(t).view
 		alert(errors.New("остановлено: окно NcStudio потеряло фокус (щелчок мышью или другое окно)"))
 		fr := f.last()
 		if len(fr) != sz[1] || !strings.Contains(plainFrame(fr), "ОСТАНОВ") || !strings.Contains(plainFrame(fr), "► OK ◄") {
 			t.Fatalf("%v:\n%s", sz, plainFrame(fr))
 		}
-		if !strings.Contains(strings.Join(fr, ""), ink(cAlarm)+outer.tl) {
-			t.Error("рамка ОСТАНОВ не красная")
+		if !strings.Contains(plainFrame(fr), "[ОСТАНОВ]") {
+			t.Error("заголовок ОСТАНОВ не выделен")
 		}
 	}
 }

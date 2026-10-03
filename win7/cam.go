@@ -30,10 +30,7 @@ type camCfg struct {
 	DrillFeed       float64
 	VDepth, VStep   float64
 	VFeed           float64
-	Side            int // sideTop, sideBottom, sideBoth
-	CopiesX         int
-	CopiesY         int
-	Gap             float64
+	Side            int // sideTop, sideBottom: the copper side milled, face up
 }
 
 const (
@@ -45,14 +42,13 @@ const (
 const (
 	sideTop = iota
 	sideBottom
-	sideBoth
 )
 
 // defaultCam: the numbers of machine.toml, which the Vesi programs ran with.
 func defaultCam() camCfg {
 	return camCfg{Tip: 0.1, Angle: 45, Spindle: 8000, IsoDepth: 0.1, Passes: 2, IsoFeed: 300, Plunge: 200,
 		MaskDepth: 0.03, MaskFeed: 200, MaskTest: true, DrillMode: drillThrough, Thickness: 1.5, DrillFeed: 60,
-		VDepth: 0.8, VStep: 0.2, VFeed: 200, Side: sideTop, CopiesX: 1, CopiesY: 1, Gap: 2}
+		VDepth: 0.8, VStep: 0.2, VFeed: 200, Side: sideTop}
 }
 
 // maskWidth: the trace of the mask tool at a depth.
@@ -95,55 +91,87 @@ type camOp struct {
 	spindle float64
 	notes   []string
 	warn    []string
-	marks   []pt // places to show on the picture: shorts, tiny openings
+	marks   []pt    // places to show on the picture: shorts, tiny openings
+	shortW  float64 // isolation: the cut width the shorts were found for
+	tool    string  // what goes into the spindle: "V 0.1/45", "сверло 0.8"
 }
 
 // ==========================
 // ===  Placement         ===
 // ==========================
 
-// place moves a board point onto the table: the corner of the outline goes to
-// X0 Y0, the bottom side is turned over left to right.
+// place puts a board on the sheet: the corner of its outline box at the
+// origin, the bottom side turned over left to right inside that box, then
+// turned rot quarter turns counter-clockwise and moved by dx, dy.
 type place struct {
 	box    rect
 	mirror bool
-	dx, dy float64 // the copy
+	rot    int
+	dx, dy float64
+}
+
+// size: the box of the board as it lies on the sheet.
+func (p place) size() (float64, float64) {
+	w, h := p.box.X1-p.box.X0, p.box.Y1-p.box.Y0
+	if p.rot%2 == 1 {
+		return h, w
+	}
+	return w, h
 }
 
 func (p place) at(q pt) pt {
-	x := q.X - p.box.X0
+	w, h := p.box.X1-p.box.X0, p.box.Y1-p.box.Y0
+	x, y := q.X-p.box.X0, q.Y-p.box.Y0
 	if p.mirror {
 		x = p.box.X1 - q.X
 	}
-	return pt{x + p.dx, q.Y - p.box.Y0 + p.dy}
+	switch p.rot & 3 {
+	case 1:
+		x, y = h-y, x
+	case 2:
+		x, y = w-x, h-y
+	case 3:
+		x, y = y, w-x
+	}
+	return pt{x + p.dx, y + p.dy}
 }
 
-// copies: the offsets of the boards on the blank.
-func (c camCfg) copies(b *board) []pt {
-	w, h := b.box.X1-b.box.X0, b.box.Y1-b.box.Y0
-	var out []pt
-	for iy := 0; iy < c.CopiesY; iy++ {
-		for ix := 0; ix < c.CopiesX; ix++ {
-			out = append(out, pt{float64(ix) * (w + c.Gap), float64(iy) * (h + c.Gap)})
+func rawPaths(loops [][]pt, z float64) []cpath {
+	out := make([]cpath, 0, len(loops))
+	for _, l := range loops {
+		ps := make([]p3, len(l))
+		for i, q := range l {
+			ps[i] = p3{q.X, q.Y, z}
 		}
+		out = append(out, cpath{pts: ps})
 	}
 	return out
 }
 
-func (c camCfg) placed(b *board, mirror bool, loops [][]pt, z float64) []cpath {
-	var out []cpath
-	for _, d := range c.copies(b) {
-		p := place{b.box, mirror, d.X, d.Y}
-		for _, l := range loops {
-			ps := make([]p3, len(l))
-			for i, q := range l {
-				w := p.at(q)
-				ps[i] = p3{w.X, w.Y, z}
+// placeOp: the operation of one board for every place it has on the sheet.
+// Turning the board over turns the loops round as well, so they are run
+// backwards to keep the copper on the left of the tool.
+func placeOp(op *camOp, pls []place) *camOp {
+	out := *op
+	out.paths, out.marks = nil, nil
+	for _, p := range pls {
+		for _, c := range op.paths {
+			ps := make([]p3, len(c.pts))
+			for i, q := range c.pts {
+				w := p.at(pt{q.X, q.Y})
+				k := i
+				if p.mirror {
+					k = len(c.pts) - 1 - i
+				}
+				ps[k] = p3{w.X, w.Y, q.Z}
 			}
-			out = append(out, cpath{pts: ps})
+			out.paths = append(out.paths, cpath{pts: ps, peck: c.peck})
+		}
+		for _, m := range op.marks {
+			out.marks = append(out.marks, p.at(m))
 		}
 	}
-	return out
+	return &out
 }
 
 // ==========================
@@ -174,10 +202,9 @@ func isolation(b *board, side string, c camCfg, field []uint16) (*camOp, []uint1
 	for _, s := range g.shapes {
 		r.draw(s)
 	}
-	mirror := side == lyBottom
-	name, title := "1_iso_top", "Изоляция, верх"
-	if mirror {
-		name, title = "1_iso_bot", "Изоляция, низ (зеркально)"
+	name, title := "1_iso", "Фрезеровка дорожек"
+	if side == lyBottom {
+		title = "Фрезеровка дорожек, низ (зеркально)"
 	}
 	op := &camOp{file: name, title: title, plunge: c.Plunge, feed: c.IsoFeed, spindle: c.Spindle}
 	// the cut stays within w of the board, as in pcbmill: outline.buffer(w);
@@ -205,7 +232,7 @@ func isolation(b *board, side string, c camCfg, field []uint16) (*camOp, []uint1
 			loops = append(loops, l)
 		}
 	}
-	op.paths = c.placed(b, mirror, loops, -c.IsoDepth)
+	op.paths = rawPaths(loops, -c.IsoDepth)
 	op.notes = append(op.notes, fmt.Sprintf("ширина реза %.3f мм на глубине %.2f, обходов %d, полоса %.2f мм",
 		w, c.IsoDepth, c.Passes, w+step*float64(c.Passes-1)))
 	// shorts: closing \ copper, the pieces of it touching two islands
@@ -266,22 +293,8 @@ func isolation(b *board, side string, c camCfg, field []uint16) (*camOp, []uint1
 		}
 		return shorts[i].X < shorts[j].X
 	})
-	p := place{b.box, mirror, 0, 0}
-	for _, s := range shorts {
-		op.marks = append(op.marks, p.at(s))
-	}
-	if len(shorts) > 0 {
-		var where []string
-		for i, s := range op.marks {
-			if i == 6 {
-				where = append(where, "...")
-				break
-			}
-			where = append(where, fmt.Sprintf("(%.1f; %.1f)", s.X, s.Y))
-		}
-		op.warn = append(op.warn, fmt.Sprintf("%d мест, где медь ближе ширины реза %.2f мм: там останется перемычка: %s",
-			len(shorts), w, strings.Join(where, " ")))
-	}
+	op.marks = shorts
+	op.shortW = w
 	return op, field
 }
 
@@ -302,10 +315,9 @@ func maskOpen(b *board, side string, c camCfg, field []uint16) (*camOp, []uint16
 	for _, s := range g.shapes {
 		r.draw(s)
 	}
-	mirror := side == lyBotMask
-	name, title := "3_mask_top", "Вскрытие маски, верх"
-	if mirror {
-		name, title = "3_mask_bot", "Вскрытие маски, низ (зеркально)"
+	name, title := "2_mask", "Вскрытие маски"
+	if side == lyBotMask {
+		title = "Вскрытие маски, низ (зеркально)"
 	}
 	op := &camOp{file: name, title: title, plunge: c.Plunge, feed: c.MaskFeed, spindle: c.Spindle}
 	field = r.distTo(0, field)
@@ -365,33 +377,34 @@ func maskOpen(b *board, side string, c camCfg, field []uint16) (*camOp, []uint16
 		}
 		return dots[i][0].Y < dots[j][0].Y
 	})
-	op.paths = c.placed(b, mirror, append(loops, dots...), -c.MaskDepth)
+	op.paths = rawPaths(append(loops, dots...), -c.MaskDepth)
 	op.notes = append(op.notes, fmt.Sprintf("окон %d, след фрезы %.3f мм на глубине %.3f", len(tops), wm, c.MaskDepth))
 	if len(dots) > 0 {
 		op.warn = append(op.warn, fmt.Sprintf("%d окон уже следа фрезы %.2f мм: там одно погружение в середину, окно выйдет чуть шире", len(dots), wm))
-		p := place{b.box, mirror, 0, 0}
 		for _, d := range dots {
-			op.marks = append(op.marks, p.at(d[0]))
+			op.marks = append(op.marks, d[0])
 		}
 	}
 	return op, field
 }
 
-// maskTest: squares 3 x 3 mm above the board at depths 0.01..0.06, to find the
-// depth that bares the copper and leaves it whole.
-func maskTest(b *board, c camCfg) *camOp {
-	op := &camOp{file: "3_mask_probe", title: "Проба глубины маски (над платой)", plunge: c.Plunge, feed: c.MaskFeed, spindle: c.Spindle}
-	h := (b.box.Y1-b.box.Y0)*float64(c.CopiesY) + c.Gap*float64(c.CopiesY-1)
+// probeW, probeH: the room of the mask probe on the sheet.
+const probeW, probeH = 25.5, 3.0
+
+// maskTest: squares 3 x 3 mm at depths 0.01..0.06 left to right from at, to
+// find the depth that bares the copper and leaves it whole.
+func maskTest(at pt, c camCfg) *camOp {
+	op := &camOp{file: "2_mask_probe", title: "Проба глубины маски", plunge: c.Plunge, feed: c.MaskFeed, spindle: c.Spindle}
 	for i := 0; i < 6; i++ {
 		d := 0.01 * float64(i+1)
 		rt := c.maskWidth(d) / 2
-		x0, y0 := float64(i)*4.5, h+3
+		x0, y0 := at.X+float64(i)*4.5, at.Y
 		for o := rt; o < 1.5; o += 0.9 * rt {
 			a, z := 3-o, -d
 			op.paths = append(op.paths, cpath{pts: []p3{{x0 + o, y0 + o, z}, {x0 + a, y0 + o, z}, {x0 + a, y0 + a, z}, {x0 + o, y0 + a, z}, {x0 + o, y0 + o, z}}})
 		}
 	}
-	op.notes = append(op.notes, fmt.Sprintf("6 квадратов 3х3 мм на Y %.0f мм, слева направо глубина 0.01 ... 0.06", h+3))
+	op.notes = append(op.notes, fmt.Sprintf("6 квадратов 3х3 мм от X%.1f Y%.1f, слева направо глубина 0.01 ... 0.06", at.X, at.Y))
 	return op
 }
 
@@ -407,17 +420,12 @@ func drilling(b *board, c camCfg) []*camOp {
 	if len(b.holes) == 0 {
 		return nil
 	}
-	put := func(h hole, d place) (pt, pt) { return d.at(h.P), d.at(h.P2) }
 	if c.DrillMode == drillSpot || c.DrillMode == drillBoth {
-		op := &camOp{file: "2_drill_spot", title: "Наколка отверстий (V-фреза)", plunge: c.Plunge, feed: c.Plunge, spindle: c.Spindle}
-		for _, d := range c.copies(b) {
-			p := place{b.box, false, d.X, d.Y}
-			for _, h := range b.holes {
-				a, _ := put(h, p)
-				op.paths = append(op.paths, cpath{pts: []p3{{a.X, a.Y, -spotZ}}})
-			}
+		op := &camOp{file: "3_drill_spot", title: "Наколка отверстий (V-фреза)", plunge: c.Plunge, feed: c.Plunge, spindle: c.Spindle}
+		for _, h := range b.holes {
+			op.paths = append(op.paths, cpath{pts: []p3{{h.P.X, h.P.Y, -spotZ}}})
 		}
-		op.notes = append(op.notes, fmt.Sprintf("%d наколок на %.1f мм, сверлить потом", len(op.paths), spotZ))
+		op.notes = append(op.notes, fmt.Sprintf("наколки на %.1f мм, сверлить потом", spotZ))
 		ops = append(ops, op)
 	}
 	if c.DrillMode == drillSpot {
@@ -434,13 +442,12 @@ func drilling(b *board, c camCfg) []*camOp {
 	sort.Float64s(ds)
 	depth := c.Thickness + 0.3
 	for _, d := range ds {
-		op := &camOp{file: fmt.Sprintf("2_drill_%.1f", d), title: fmt.Sprintf("Сверло %.1f мм", d),
+		op := &camOp{file: fmt.Sprintf("3_drill_%.1f", d), title: fmt.Sprintf("Сверло %.1f мм", d),
 			plunge: c.DrillFeed, feed: c.DrillFeed, spindle: c.Spindle}
 		n, slots := 0, 0
-		for _, cp := range c.copies(b) {
-			p := place{b.box, false, cp.X, cp.Y}
+		{
 			for _, h := range sizes[d] {
-				a, e := put(h, p)
+				a, e := h.P, h.P2
 				if !h.Slot {
 					op.paths = append(op.paths, cpath{pts: []p3{{a.X, a.Y, -depth}}, peck: pecks})
 					n++
@@ -470,7 +477,7 @@ func drilling(b *board, c camCfg) []*camOp {
 			}
 		}
 		sort.Strings(exact)
-		note := fmt.Sprintf("%d отверстий насквозь на %.1f мм (по файлу: %s)", n, depth, strings.Join(exact, ", "))
+		note := fmt.Sprintf("%d отв. на плату насквозь на %.1f мм (по файлу: %s)", n, depth, strings.Join(exact, ", "))
 		if slots > 0 {
 			note += fmt.Sprintf(", пазов %d", slots)
 		}
@@ -496,17 +503,9 @@ func levels(depth, step float64) []float64 {
 func vcut(b *board, c camCfg) *camOp {
 	op := &camOp{file: "4_vcut", title: "V-рез по контуру", plunge: c.Plunge / 2, feed: c.VFeed, spindle: c.Spindle}
 	lv := levels(c.VDepth, c.VStep)
-	for _, d := range c.copies(b) {
-		p := place{b.box, false, d.X, d.Y}
-		for _, l := range b.outline {
-			for _, z := range lv {
-				ps := make([]p3, len(l))
-				for i, q := range l {
-					w := p.at(q)
-					ps[i] = p3{w.X, w.Y, -z}
-				}
-				op.paths = append(op.paths, cpath{pts: ps})
-			}
+	for _, l := range b.outline {
+		for _, z := range lv {
+			op.paths = append(op.paths, rawPaths([][]pt{l}, -z)...)
 		}
 	}
 	op.notes = append(op.notes, fmt.Sprintf("канавка %.2f мм за %d проходов, плату потом сломать по ней", c.VDepth, len(lv)))
@@ -665,49 +664,43 @@ func (op *camOp) minutes() (float64, float64) {
 // ===  All of it         ===
 // ==========================
 
-// camRun makes every program of a board; say gets a line as each is done.
-func camRun(b *board, c camCfg, say func(string)) []*camOp {
+// camBoard: the operations of one board in its own coordinates, the side
+// of the settings milled; say gets a line before each long part.
+func camBoard(b *board, c camCfg, say func(string)) []*camOp {
 	var ops []*camOp
 	var field []uint16
-	sides := []string{lyTop, lyBottom}
-	switch c.Side {
-	case sideTop:
-		sides = sides[:1]
-	case sideBottom:
-		sides = sides[1:]
+	side, mask := lyTop, lyTopMask
+	if c.Side == sideBottom || b.copper[lyTop] == nil {
+		side, mask = lyBottom, lyBotMask // a one sided board drawn on the bottom is milled the same way
 	}
-	if c.Side == sideTop && b.copper[lyTop] == nil && b.copper[lyBottom] != nil {
-		sides = []string{lyBottom} // a one sided board drawn on the bottom
-	}
-	for _, s := range sides {
-		if b.copper[s] == nil {
-			continue
-		}
-		say("изоляция: считаю " + map[string]string{lyTop: "верх", lyBottom: "низ"}[s])
+	vbit := fmt.Sprintf("V-фреза %s/%s°", num(c.Tip), num(c.Angle))
+	if b.copper[side] != nil {
+		say(b.name + ": дорожки")
 		var op *camOp
-		op, field = isolation(b, s, c, field)
+		op, field = isolation(b, side, c, field)
+		op.tool = vbit
 		ops = append(ops, op)
 	}
-	ops = append(ops, drilling(b, c)...)
-	for _, s := range sides {
-		m := map[string]string{lyTop: lyTopMask, lyBottom: lyBotMask}[s]
-		if b.mask[m] == nil {
-			continue
-		}
-		say("маска: считаю окна")
+	if b.mask[mask] != nil {
+		say(b.name + ": окна маски")
 		var op *camOp
-		op, field = maskOpen(b, m, c, field)
-		ops = append(ops, op)
-		if c.MaskTest && (s == sides[len(sides)-1] || b.mask[lyBotMask] == nil) {
-			ops = append(ops, maskTest(b, c)) // once, after the last mask
-			c.MaskTest = false
+		op, field = maskOpen(b, mask, c, field)
+		op.tool = vbit
+		if c.MaskFlat > 0 {
+			op.tool = "плоская фреза " + num(c.MaskFlat)
 		}
+		ops = append(ops, op)
 	}
-	ops = append(ops, vcut(b, c))
-	for _, op := range ops {
-		op.paths = order(op.paths, pt{})
+	for _, op := range drilling(b, c) {
+		op.tool = "сверло " + strings.TrimPrefix(op.file, "3_drill_")
+		if op.file == "3_drill_spot" {
+			op.tool = vbit
+		}
+		ops = append(ops, op)
 	}
-	return ops
+	op := vcut(b, c)
+	op.tool = "V-резец для V-реза"
+	return append(ops, op)
 }
 
 // fileBase: a board name a file may carry: latin letters, digits, - and _.

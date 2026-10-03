@@ -25,7 +25,11 @@ func wireBig(touching bool, hits int, since string, w int) []string {
 	if touching {
 		word, bg = "♦   "+spaced("КОНТАКТ")+"   ♦", cYellow
 	}
-	tile := func(s string) string { return on(fg, bg, center(s, bw)) }
+	tile := func(s string) string { return center(s, bw) }
+	if touching { // contact: the dark bar, the one mark of the screen
+		tile = func(s string) string { return on(cWhite, cDark, center(s, bw)) }
+	}
+	_, _ = fg, bg
 	return []string{tile(""), tile(word), tile(""), "",
 		center(paint(cHint, "касаний ")+paint(cTitle, fmt.Sprintf("%-4d", hits))+
 			paint(cHint, "   последнее изменение ")+paint(cTitle, since), bw)}
@@ -136,20 +140,33 @@ func cmdZero(o opts) error {
 		first = g.Points()[0]
 		from = "scan.csv нет, первая точка сетки по программе"
 	}
-	p := newPage(menuTitle("5"), "Ищу МК на COM-портах...")
+	if err := zeroAt(o, menuTitle("5"), first, from); err != nil {
+		return err
+	}
+	sayOK("Z0 стоит на меди в первой точке карты. Теперь пункт 6 и запуск *_level.tap.")
+	cur.wait()
+	return nil
+}
+
+// zeroAt: one slow touch of the copper at the point, then the operator zeroes
+// Z in NcStudio there and the tool goes up. False and no error: the operator
+// said no.
+func zeroAt(o opts, title string, at [2]float64, why string) error {
+	p := newPage(title, "Ищу МК на COM-портах...")
 	m, _, err := findTouch(o.port)
 	if err != nil {
 		return err
 	}
 	p.set(func() {
+		p.head = "Ноль Z"
 		p.info = []string{
-			"Фреза 0.1 стоит на 1-2 мм над медью. Будет одно медленное касание в " +
-				paint(cZero, fmt.Sprintf("♦ X%.2f Y%.2f", first[0], first[1])) + " (" + from + "),",
+			"Фреза стоит на 1-2 мм над медью. Будет одно медленное касание в " +
+				fmt.Sprintf("♦ X%.2f Y%.2f", at[0], at[1]) + " (" + why + "),",
 			"потом нужно обнулить Z в NcStudio.",
 		}
 	})
 	if !confirm("Начать касание?") {
-		return nil
+		return errBack
 	}
 	nc := newNc(o)
 	if err := nc.Grab(); err != nil {
@@ -157,30 +174,25 @@ func cmdZero(o opts) error {
 	}
 	s := newScanner(o, nc, m)
 	s.StepCoarse = 0.02 // the thin tip goes down in small steps
-	z, err := s.TouchAt(first[0], first[1], 0)
+	z, err := s.TouchAt(at[0], at[1], 0)
 	if err != nil {
 		return err
 	}
 	if err := nc.MoveZ(z, 20); err != nil {
 		return err
 	}
-	logLine(paint(cTouch, "♦ КОНТАКТ:") + " фреза касается меди.")
-	message("Обнулите Z", "Фреза касается меди.", paint(cTitle, "Обнулите Z в NcStudio")+" (рабочая система координат),",
+	logLine("♦ КОНТАКТ: фреза касается меди.")
+	message("Обнулите Z", "Фреза касается меди.", "Обнулите Z в NcStudio (рабочая система координат),",
 		"затем Enter здесь.")
 	if simM != nil {
 		simM.ZeroZ() // what the operator does in NcStudio
-		logLine(paint(cHint, "эмуляция: Z обнулён в NcStudio на этой высоте"))
+		logLine("эмуляция: Z обнулён в NcStudio на этой высоте")
 	}
 	nc.ResetZ()
 	if err := nc.Grab(); err != nil {
 		return err
 	}
-	if err := nc.RapidZ(o.clear * 3); err != nil {
-		return err
-	}
-	sayOK("Z0 стоит на меди в первой точке карты. Теперь пункт 6 и запуск *_level.tap.")
-	p.wait()
-	return nil
+	return nc.RapidZ(o.clear * 3)
 }
 
 func cmdLevel(o opts) error {

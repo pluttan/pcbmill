@@ -39,6 +39,7 @@ type WinKeys struct {
 func (k *WinKeys) Grab() error       { return errors.New("только Windows") }
 func (k *WinKeys) OpenMDI() error    { return errors.New("только Windows") }
 func (k *WinKeys) Line(string) error { return errors.New("только Windows") }
+func (k *WinKeys) Load(string) error { return errors.New("только Windows") }
 
 func ValidKeys(string) error { return nil }
 

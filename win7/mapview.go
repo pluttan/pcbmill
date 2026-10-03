@@ -122,17 +122,17 @@ func (c *tableCanvas) set(col, row int, s string) {
 func (c *tableCanvas) frame(r rect) {
 	c0, c1, r0, r1 := c.col(r.X0), c.col(r.X1), c.row(r.Y1), c.row(r.Y0)
 	for k := c0 + 1; k < c1; k++ {
-		c.set(k, r0, paint(cCut, "─"))
-		c.set(k, r1, paint(cCut, "─"))
+		c.set(k, r0, tint(cCut, "─"))
+		c.set(k, r1, tint(cCut, "─"))
 	}
 	for k := r0 + 1; k < r1; k++ {
-		c.set(c0, k, paint(cCut, "│"))
-		c.set(c1, k, paint(cCut, "│"))
+		c.set(c0, k, tint(cCut, "│"))
+		c.set(c1, k, tint(cCut, "│"))
 	}
-	c.set(c0, r0, paint(cCut, "┌"))
-	c.set(c1, r0, paint(cCut, "┐"))
-	c.set(c0, r1, paint(cCut, "└"))
-	c.set(c1, r1, paint(cCut, "┘"))
+	c.set(c0, r0, tint(cCut, "┌"))
+	c.set(c1, r0, tint(cCut, "┐"))
+	c.set(c0, r1, tint(cCut, "└"))
+	c.set(c1, r1, tint(cCut, "┘"))
 }
 
 // mm is a coordinate for an axis label: no trailing zeros.
@@ -295,15 +295,15 @@ func gridViewRows(g Grid, cut *rect, w, rows int) []string {
 	}
 	for _, y := range ys {
 		for _, x := range xs {
-			c.set(c.col(x), c.row(y), paint(cTitle, "■"))
+			c.set(c.col(x), c.row(y), tint(cWhite, "■"))
 		}
 	}
 	first := g.Points()[0]
-	c.set(c.col(first[0]), c.row(first[1]), paint(cZero, "♦"))
+	c.set(c.col(first[0]), c.row(first[1]), tint(cZero, "♦"))
 	out := c.render(xs, ys)
-	items := []string{paint(cTitle, "■") + paint(cHint, " точка касания"), paint(cZero, "♦") + paint(cHint, " первая точка, ноль Z")}
+	items := []string{tint(cWhite, "■") + paint(cHint, " точка касания"), tint(cZero, "♦") + paint(cHint, " первая точка, ноль Z")}
 	if cut != nil {
-		items = append(items, paint(cCut, "┌┐")+paint(cHint, " рез программы"))
+		items = append(items, tint(cCut, "┌┐")+paint(cHint, " рез программы"))
 	}
 	return centerBlock(append(out, legendUnder(out, items, w)...))
 }
@@ -350,7 +350,7 @@ func heightViewRows(h *HeightMap, cut *rect, w, rows int) []string {
 	for r := c.row(gb.Y1); r <= c.row(gb.Y0); r++ {
 		for k := c.col(gb.X0); k <= c.col(gb.X1); k++ {
 			s := shadeOf(h.At(c.x(k), c.y(r)), lo, hi)
-			c.set(k, r, paint(shadeColor[s], shades[s]))
+			c.set(k, r, tint(shadeColor[s], shades[s]))
 		}
 	}
 	// a cut the size of the map is the edge of the shading already: no frame over it
@@ -361,23 +361,23 @@ func heightViewRows(h *HeightMap, cut *rect, w, rows int) []string {
 	if cut != nil {
 		c.frame(*cut)
 	}
-	c.set(c.col(h.zx), c.row(h.zy), paint(cZero, "♦"))
+	c.set(c.col(h.zx), c.row(h.zy), tint(cZero, "♦"))
 	out := c.render(h.xs, h.ys)
 	var scale []string
 	if hi-lo < 1e-9 {
-		scale = append(scale, paint(shadeColor[0], shades[0])+paint(cHint, " вся медь на одной высоте"))
+		scale = append(scale, tint(shadeColor[0], shades[0])+paint(cHint, " вся медь на одной высоте"))
 	} else {
 		bar := ""
 		for k := range shades {
-			bar += paint(shadeColor[k], shades[k]+shades[k])
+			bar += tint(shadeColor[k], shades[k]+shades[k])
 		}
 		scale = append(scale, paint(cHint, "мин ")+paint(cTitle, fmt.Sprintf("%+.3f", lo))+" "+bar+" "+
 			paint(cHint, "макс ")+paint(cTitle, fmt.Sprintf("%+.3f", hi))+paint(cHint, " мм"))
 	}
-	stats := []string{scale[0], paint(cZero, "♦") + paint(cHint, " ноль Z, первая точка"),
+	stats := []string{scale[0], tint(cZero, "♦") + paint(cHint, " ноль Z, первая точка"),
 		paint(cHint, "перепад ") + val(fmt.Sprintf("%.3f", hi-lo), "мм")}
 	if cut != nil {
-		stats = append(stats, paint(cCut, "┌┐")+paint(cHint, " рез"))
+		stats = append(stats, tint(cCut, "┌┐")+paint(cHint, " рез"))
 	}
 	return centerBlock(append(out, legendUnder(out, stats, w)...))
 }
@@ -407,9 +407,9 @@ func heightTable(h *HeightMap, w int) []string {
 				v, s := h.z[j][i], fmt.Sprintf("%8.3f", h.z[j][i])
 				switch {
 				case hi-lo > 1e-9 && v == hi:
-					s = paint(shadeColor[len(shades)-1], s)
+					s = tint(shadeColor[len(shades)-1], s)
 				case hi-lo > 1e-9 && v == lo:
-					s = paint(shadeColor[0], s)
+					s = tint(shadeColor[0], s)
 				}
 				l += s
 			}
@@ -442,22 +442,22 @@ func scanView(g Grid, cut *rect, done []Point, blink bool, w, rows int) []string
 		switch {
 		case i < len(done):
 			s := shadeOf(done[i].Z, lo, hi)
-			mark = paint(shadeColor[s], shades[s])
+			mark = tint(shadeColor[s], shades[s])
 		case i == len(done):
 			col := cYellow
 			if blink {
 				col = cWhite
 			}
-			mark = paint(col, "■")
+			mark = tint(col, "■")
 		}
 		c.set(c.col(p[0]), c.row(p[1]), mark)
 	}
 	out := c.render(xs, ys)
-	items := []string{paint(cYellow, "■") + paint(cHint, " касание сейчас"), paint(cHint, "· впереди")}
+	items := []string{tint(cYellow, "■") + paint(cHint, " касание сейчас"), paint(cHint, "· впереди")}
 	if len(done) > 1 && hi-lo > 1e-9 {
 		bar := ""
 		for k := range shades {
-			bar += paint(shadeColor[k], shades[k])
+			bar += tint(shadeColor[k], shades[k])
 		}
 		items = append(items, paint(cHint, "ниже ")+bar+paint(cHint, " выше"))
 	}

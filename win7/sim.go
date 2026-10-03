@@ -59,6 +59,7 @@ type simMachine struct {
 	spikeTill, lastNoise     time.Time
 	rnd                      *rand.Rand
 	skipped                  string // the command the machine lost, for the screen
+	loaded                   string // the program open in the virtual NcStudio
 }
 
 func newSimMachine(surface func(x, y float64) float64) *simMachine {
@@ -103,6 +104,22 @@ func (s *simMachine) OpenMDI() error {
 		s.sleep(120 * time.Millisecond)
 	}
 	return nil
+}
+
+// Load: the virtual NcStudio opens the program, it does not start it.
+func (s *simMachine) Load(path string) error {
+	s.mu.Lock()
+	s.loaded = path
+	s.mu.Unlock()
+	s.sleep(time.Second)
+	return nil
+}
+
+// Loaded: the program open in the virtual NcStudio.
+func (s *simMachine) Loaded() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.loaded
 }
 
 // sleep is a pause of machine time: -simspeed times shorter in real time.

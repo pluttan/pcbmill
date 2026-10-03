@@ -1,19 +1,15 @@
 package main
 
-// Menu 1: programs from Gerber. The operator drops the zip of the factory
-// files (or a folder) next to the exe, picks it here, checks the numbers of
-// the form, and gets one .tap per operation next to the exe: isolation,
-// drilling, the mask opening, the V-groove.
+// The numbers of the programs: the tool, depths, feeds, drilling, the
+// V-groove, the side; kept next to the exe between runs.
 
 import (
 	"fmt"
 	"math"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
-	"time"
 )
 
 // ==========================
@@ -66,14 +62,8 @@ var camFields = []camField{
 		get: func(c *camCfg) float64 { return c.VStep }, put: func(c *camCfg, v float64) { c.VStep = v }},
 	{key: "vfeed", label: "подача", unit: "мм/мин", lo: 10, hi: 3000, step: 50,
 		get: func(c *camCfg) float64 { return c.VFeed }, put: func(c *camCfg, v float64) { c.VFeed = v }},
-	{key: "side", group: "Раскладка", label: "сторона", choices: []string{"верх", "низ", "обе"},
+	{key: "side", group: "Сторона", label: "медь сверху", choices: []string{"верх", "низ"},
 		get: func(c *camCfg) float64 { return float64(c.Side) }, put: func(c *camCfg, v float64) { c.Side = int(v) }},
-	{key: "nx", label: "плат по X", lo: 1, hi: 20, step: 1,
-		get: func(c *camCfg) float64 { return float64(c.CopiesX) }, put: func(c *camCfg, v float64) { c.CopiesX = int(v) }},
-	{key: "ny", label: "плат по Y", lo: 1, hi: 20, step: 1,
-		get: func(c *camCfg) float64 { return float64(c.CopiesY) }, put: func(c *camCfg, v float64) { c.CopiesY = int(v) }},
-	{key: "gap", label: "зазор между", unit: "мм", lo: 0, hi: 30, step: 0.5, digits: 1,
-		get: func(c *camCfg) float64 { return c.Gap }, put: func(c *camCfg, v float64) { c.Gap = v }},
 }
 
 func b2f(b bool) float64 {
@@ -163,7 +153,6 @@ const (
 var camButtons = [cbCount]string{"Сделать программы", "Числа по умолчанию", "Отмена"}
 
 type camForm struct {
-	b    *board
 	c    camCfg
 	sel  int // fields, then buttons
 	edit *field
@@ -350,29 +339,13 @@ func (f *camForm) view(w, h int) []string {
 	fw := w
 	w -= 4
 	rows := room(fw, h)
-	info := boardInfo(f.b, f.c)
-	var body []string
-	if w >= camFormW+3+30 { // the board beside the form
-		pw := w - camFormW - 3
-		if pw > 76 {
-			pw = 76
-		}
-		about := f.about(pw)
-		inf := wrapAll(info, pw)
-		right := stack(inf, about)
-		if ph := rows - len(right) - 2; ph >= 6 {
-			right = stack(boardPic(f.b, f.c, nil, pw, ph), right)
-		}
-		body = beside(f.form(rows), right, 3)
-	} else {
-		about := f.about(colW(w))
-		body = stack(f.form(rows-len(about)-1), about)
-	}
+	about := f.about(colW(w))
+	body := stack(f.form(rows-len(about)-1), about)
 	hint := hints(fw, "↑↓", "поле", "← →", "меньше / больше", "Enter", "ввести", "Esc", "отмена")
 	if f.edit != nil {
 		hint = hints(fw, "Enter", "принять", "Esc", "отменить", "← →", "по числу")
 	}
-	return screen(fw, h, curHead, body, hint)
+	return screen(fw, h, "задание / Платы / Числа программ", body, hint)
 }
 
 func wrapAll(ls []string, w int) []string {
@@ -381,294 +354,4 @@ func wrapAll(ls []string, w int) []string {
 		out = append(out, wrap(l, w, 2)...)
 	}
 	return out
-}
-
-// boardInfo: the size of the board and which file gave which layer.
-func boardInfo(b *board, c camCfg) []string {
-	bw, bh := b.box.X1-b.box.X0, b.box.Y1-b.box.Y0
-	out := []string{paint(cTitle, b.name) + paint(cHint, "  ") + val(fmt.Sprintf("%.1f x %.1f", bw, bh), "мм")}
-	if c.CopiesX*c.CopiesY > 1 {
-		out[0] += paint(cHint, fmt.Sprintf("   %d плат: ", c.CopiesX*c.CopiesY)) +
-			val(fmt.Sprintf("%.1f x %.1f", bw*float64(c.CopiesX)+c.Gap*float64(c.CopiesX-1), bh*float64(c.CopiesY)+c.Gap*float64(c.CopiesY-1)), "мм")
-	}
-	names := []struct{ k, s string }{{lyTop, "медь верх"}, {lyBottom, "медь низ"}, {lyTopMask, "маска верх"},
-		{lyBotMask, "маска низ"}, {lyOutline, "контур"}}
-	for _, n := range names {
-		if fs := b.files[n.k]; len(fs) > 0 {
-			out = append(out, paint(cHint, padRight(n.s, 11))+filepath.Base(fs[0]))
-		}
-	}
-	if len(b.holes) > 0 {
-		sizes := map[float64]int{}
-		for _, h := range b.holes {
-			sizes[drillSize(h.D)]++
-		}
-		var ds []float64
-		for d := range sizes {
-			ds = append(ds, d)
-		}
-		sort.Float64s(ds)
-		var parts []string
-		for _, d := range ds {
-			parts = append(parts, fmt.Sprintf("%.1fx%d", d, sizes[d]))
-		}
-		out = append(out, paint(cHint, padRight("сверловка", 11))+fmt.Sprintf("%d отв.: ", len(b.holes))+strings.Join(parts, " "))
-	} else {
-		out = append(out, paint(cHint, padRight("сверловка", 11))+"нет файла")
-	}
-	for _, n := range b.notes {
-		out = append(out, paint(cAlarm, "▲")+" "+n)
-	}
-	return out
-}
-
-// ==========================
-// ===  Board picture     ===
-// ==========================
-
-// boardPic: the board seen from above as on the table, w x h cells: copper in
-// shades by how much of a cell it covers, the edge in dots, holes, and marks.
-func boardPic(b *board, c camCfg, marks []pt, w, h int) []string {
-	side, mirror := lyTop, false
-	if c.Side == sideBottom || b.copper[lyTop] == nil {
-		side, mirror = lyBottom, true
-	}
-	bw, bh := b.box.X1-b.box.X0, b.box.Y1-b.box.Y0
-	if bw <= 0 || bh <= 0 || w < 8 || h < 4 {
-		return nil
-	}
-	sx := math.Min(float64(w-2)/bw, 2*float64(h-2)/bh) // cells per mm across; a cell is twice as high
-	cols, rows := int(math.Ceil(bw*sx))+1, int(math.Ceil(bh*sx/2))+1
-	// two samples across and four up a cell
-	px := 1 / (2 * sx)
-	r := newRaster(rect{b.box.X0, b.box.X0 + float64(cols)*2*px, b.box.Y0, b.box.Y0 + float64(rows)*4*px}, px)
-	if g := b.copper[side]; g != nil {
-		for _, s := range g.shapes {
-			r.draw(s)
-		}
-	}
-	cells := make([][]string, rows)
-	for j := range cells {
-		cells[j] = make([]string, cols)
-		for i := range cells[j] {
-			n := 0
-			for dy := 0; dy < 4; dy++ {
-				for dx := 0; dx < 2; dx++ {
-					if r.at(2*i+dx, 4*j+dy) {
-						n++
-					}
-				}
-			}
-			s := " "
-			switch {
-			case n >= 7:
-				s = "█"
-			case n >= 5:
-				s = "▓"
-			case n >= 3:
-				s = "▒"
-			case n >= 1:
-				s = "░"
-			}
-			if n > 0 {
-				s = paint(cBrown, s)
-			}
-			cells[j][i] = s
-		}
-	}
-	p := place{b.box, mirror, 0, 0}
-	cell := func(q pt) (int, int, bool) { // a table point to its cell, row 0 on top
-		i := int(q.X * sx)
-		j := rows - 1 - int(q.Y*sx/2)
-		return i, j, i >= 0 && j >= 0 && i < cols && j < rows
-	}
-	for _, l := range b.outline {
-		for k := 1; k < len(l); k++ {
-			a, e := p.at(l[k-1]), p.at(l[k])
-			n := int(math.Hypot(e.X-a.X, e.Y-a.Y)*sx*2) + 1
-			for s := 0; s <= n; s++ {
-				t := float64(s) / float64(n)
-				if i, j, ok := cell(pt{a.X + (e.X-a.X)*t, a.Y + (e.Y-a.Y)*t}); ok && strip(cells[j][i]) == " " {
-					cells[j][i] = paint(cGray, "·")
-				}
-			}
-		}
-	}
-	for _, hl := range b.holes {
-		if hl.D*sx < 0.8 {
-			continue // smaller than a cell: the pad round it says enough
-		}
-		if i, j, ok := cell(p.at(hl.P)); ok {
-			cells[j][i] = paint(cWhite, "○")
-		}
-	}
-	for _, m := range marks {
-		if i, j, ok := cell(m); ok {
-			cells[j][i] = paint(cAlarm, "■")
-		}
-	}
-	out := make([]string, rows)
-	for j := range cells {
-		out[j] = strings.Join(cells[j], "")
-	}
-	return centerBlock(out)
-}
-
-// ==========================
-// ===  The command       ===
-// ==========================
-
-func cmdGerber(o opts) error {
-	srcs := boardSources(exeDir())
-	if len(srcs) == 0 {
-		message("Нет плат",
-			"Рядом с pcbscan.exe нет файлов платы.",
-			"Положите туда zip, который KiCad, EasyEDA или Eagle делает для завода (герберы и сверловка), или папку с этими файлами.")
-		return nil
-	}
-	var names []string
-	for _, s := range srcs {
-		n := filepath.Base(s)
-		if st, err := os.Stat(s); err == nil && st.IsDir() {
-			n += string(filepath.Separator)
-		}
-		names = append(names, n)
-	}
-	i, ok := pick("Платы рядом с pcbscan.exe", names)
-	if !ok {
-		return errBack
-	}
-	return gerberFrom(srcs[i])
-}
-
-// gerberFrom: the form and the programs for one board, also when its zip was
-// dropped onto the exe.
-func gerberFrom(path string) error {
-	newPage(menuTitle("1"), "Читаю "+filepath.Base(path)+"...")
-	b, err := loadBoard(path)
-	if err != nil {
-		return err
-	}
-	f := &camForm{b: b, c: loadCam(exeDir())}
-	ok := false
-	run(f.view, func(k Key) bool {
-		var done bool
-		ok, done = f.key(k)
-		return done
-	}, 500*time.Millisecond)
-	if !ok {
-		return nil
-	}
-	c := f.c
-	saveCam(exeDir(), c)
-	newPage(menuTitle("1"), "Считаю программы платы "+paint(cTitle, b.name)+". Большая плата - до минуты.")
-	t0 := time.Now()
-	ops := camRun(b, c, func(s string) { sayHint(s) })
-	files, err := camWrite(exeDir(), b.name, ops)
-	if err != nil {
-		return err
-	}
-	info, marks := camSummary(ops, files, c)
-	info = append(info, "", fmt.Sprintf("Готово за %.0f с. Порядок: карта высот по 1_iso (пункт 4), выровнять по ней "+
-		"(пункт 6) каждую программу, резать 1, сверлить 2, нанести маску и вскрыть 3, последним 4.", time.Since(t0).Seconds()))
-	camResult(info, func(w, h int) []string { return boardPic(b, c, marks, w, h) })
-	return nil
-}
-
-// camSummary: a line per program, the drills in one; the warnings under them.
-func camSummary(ops []*camOp, files []string, c camCfg) ([]string, []pt) {
-	var info []string
-	var marks []pt
-	var drills []string
-	drillMin := 0.0
-	drillAt := -1
-	for k, op := range ops {
-		_, min := op.minutes()
-		name := filepath.Base(files[k])
-		if strings.HasPrefix(op.file, "2_drill_") && op.file != "2_drill_spot" {
-			if drillAt < 0 {
-				drillAt = len(info)
-				info = append(info, "")
-			}
-			drills = append(drills, strings.TrimPrefix(op.file, "2_drill_"))
-			drillMin += min
-			continue
-		}
-		info = append(info, paint(cOK, "√ ")+paint(cTitle, name)+paint(cHint, fmt.Sprintf("  %s, ~%.0f мин", op.title, math.Ceil(min))))
-		for _, wn := range op.warn {
-			info = append(info, "  "+paint(cAlarm, "▲ ")+wn)
-		}
-		if strings.HasPrefix(op.file, "1_iso") && (c.Side != sideBoth || op.file == "1_iso_top") {
-			marks = append(marks, op.marks...)
-		}
-	}
-	if drillAt >= 0 {
-		base := strings.TrimSuffix(filepath.Base(files[0]), filepath.Ext(files[0]))
-		if i := strings.Index(base, "_1_"); i >= 0 {
-			base = base[:i]
-		} else if i := strings.Index(base, "_2_"); i >= 0 {
-			base = base[:i]
-		}
-		info[drillAt] = paint(cOK, "√ ") + paint(cTitle, base+"_2_drill_*.tap") +
-			paint(cHint, fmt.Sprintf("  свёрла %s мм, ~%.0f мин", strings.Join(drills, " "), math.Ceil(drillMin)))
-	}
-	return info, marks
-}
-
-// camResult: the list of programs, scrolled with the arrows when it is long,
-// the board beside it when the window is wide.
-func camResult(info []string, pic func(w, h int) []string) {
-	top := 0
-	view := func(w, h int) []string {
-		bw := colW(w)
-		rows := room(w, h)
-		var ls []string
-		for _, l := range info {
-			ls = append(ls, wrap(l, inner(bw), 4)...)
-		}
-		n := rows - 1
-		if top > len(ls)-n {
-			top = len(ls) - n
-		}
-		if top < 0 {
-			top = 0
-		}
-		vis := ls
-		if len(ls) > n {
-			vis = append([]string(nil), ls[top:top+n]...)
-			if top > 0 {
-				vis[0] = center(paint(cHint, "▲ ещё выше"), inner(bw))
-			}
-			if top+n < len(ls) {
-				vis[n-1] = center(paint(cHint, "▼ ещё ниже"), inner(bw))
-			}
-		}
-		body := box(thin, "Программы рядом с pcbscan.exe", vis, bw)
-		if pw := w - 4 - bw - 3; pw >= 30 {
-			if pw > 70 {
-				pw = 70
-			}
-			body = beside(body, pic(pw, rows), 3)
-		}
-		keys := []string{"Enter", "в меню", "Esc", "в меню"}
-		if len(ls) > n {
-			keys = append([]string{"↑↓", "листать"}, keys...)
-		}
-		return screen(w, h, curHead, body, hints(w, keys...))
-	}
-	run(view, func(k Key) bool {
-		switch k.Code {
-		case KeyUp:
-			top--
-		case KeyDown:
-			top++
-		case KeyPgUp:
-			top -= 10
-		case KeyPgDn:
-			top += 10
-		case KeyEnter, KeyEsc, KeyCtrlC:
-			return true
-		}
-		return false
-	}, 500*time.Millisecond)
 }

@@ -11,6 +11,9 @@ type Keys interface {
 	Grab() error // bring NcStudio forward; after this, losing focus aborts
 	OpenMDI() error
 	Line(s string) error
+	// Load opens a program in NcStudio (File, Open: Ctrl+O) and checks that
+	// its name came up in the title; it never starts it.
+	Load(path string) error
 }
 
 // NcStudio drives the machine through MDI lines. XY are absolute work coordinates
@@ -102,6 +105,9 @@ func (n *NcStudio) MoveZ(z, feed float64) error {
 }
 
 func (n *NcStudio) Grab() error { return n.K.Grab() }
+
+// Load: the program into NcStudio, ready for the operator's F9.
+func (n *NcStudio) Load(path string) error { return n.K.Load(path) }
 
 // ResetZ: the operator zeroed Z in NcStudio at the current height.
 func (n *NcStudio) ResetZ() { n.z = 0 }
