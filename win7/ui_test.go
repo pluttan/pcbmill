@@ -265,17 +265,17 @@ func TestConfirm(t *testing.T) {
 			t.Errorf("%v: %v", c.keys, got)
 		}
 		all := plainFrame(f.frames[0])
-		if !strings.Contains(all, "[ Да ]") || !strings.Contains(all, "[ Нет ]") || !strings.Contains(all, "Меню") {
+		if !strings.Contains(all, "[ Да ]") || !strings.Contains(all, "► Нет ◄") || !strings.Contains(all, "Меню") {
 			t.Fatalf("диалог не поверх меню:\n%s", all)
 		}
-		selected(t, f.frames[0], "[ Нет ]")
+		selected(t, f.frames[0], "► Нет ◄")
 	}
 	for _, sz := range sizes {
 		f := useTerm(t, sz[0], sz[1], k(KeyEnter))
 		backdrop = newMenuNav(mainMenu).view
 		alert(errors.New("остановлено: окно NcStudio потеряло фокус (щелчок мышью или другое окно)"))
 		fr := f.last()
-		if len(fr) != sz[1] || !strings.Contains(plainFrame(fr), "ОСТАНОВ") || !strings.Contains(plainFrame(fr), "[ OK ]") {
+		if len(fr) != sz[1] || !strings.Contains(plainFrame(fr), "ОСТАНОВ") || !strings.Contains(plainFrame(fr), "► OK ◄") {
 			t.Fatalf("%v:\n%s", sz, plainFrame(fr))
 		}
 		if !strings.Contains(strings.Join(fr, ""), ink(cAlarm)+"╔") {

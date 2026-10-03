@@ -53,7 +53,6 @@ func scanInfo(done, all int, start time.Time, last, phase string) []string {
 	if last != "" {
 		out = append(out, "последняя: "+last)
 	}
-	out = append(out, paint(cHint, "Стоп: щелчок по другому окну; Esc в этом окне - между точками."))
 	return out
 }
 
@@ -113,6 +112,8 @@ func cmdScan(o opts) error {
 	refresh := func() { p.info = scanInfo(len(done), len(pts), start, last, phase) }
 	p.set(func() {
 		refresh()
+		p.nolog = true
+		p.keys = []string{"Esc", "стоп между точками", "щелчок по другому окну", "стоп сразу"}
 		p.pic = func(w, h int) []string {
 			return fitRows(h, func(r int) []string { return scanView(g, &cut, done, blink, w, r) })
 		}

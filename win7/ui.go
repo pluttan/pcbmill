@@ -107,8 +107,8 @@ func (d *dialog) box(w int) []string {
 	body = append(body, "")
 	var bs []string
 	for i, b := range d.buttons {
-		if i == d.sel {
-			bs = append(bs, hilite("[ "+b+" ]"))
+		if i == d.sel { // the arrows show the choice without colours too
+			bs = append(bs, hilite("► "+b+" ◄"))
 		} else {
 			bs = append(bs, "[ "+b+" ]")
 		}
@@ -275,6 +275,7 @@ type page struct {
 	log   []string
 	keys  []string // hint pairs
 	big   []string // a large indicator in place of the log (wire check)
+	nolog bool     // the picture takes the room of the log (scan)
 
 	screenFn func(w, h int) []string // a screen of its own instead of view (manual mode)
 }
@@ -333,7 +334,11 @@ func (p *page) view(w, h int) []string {
 			pw = 110
 		}
 		var b []string
-		if ph := left - used - 1 - 4; ph >= 3 {
+		ph := left - used - 1 - 4
+		if p.nolog {
+			ph = left - used - 1
+		}
+		if ph >= 3 {
 			b = p.pic(pw, ph)
 		}
 		if len(b) > 0 {
@@ -345,7 +350,7 @@ func (p *page) view(w, h int) []string {
 		blocks = append(blocks, p.big)
 		used += len(p.big) + 1
 	}
-	if n := left - used - 3; n >= 1 && len(p.log) > 0 {
+	if n := left - used - 3; n >= 1 && len(p.log) > 0 && !p.nolog {
 		var ls []string
 		for _, l := range p.log {
 			ls = append(ls, wrap(l, bw-4, 2)...)

@@ -108,7 +108,7 @@ func TestEditGridRun(t *testing.T) {
 			t.Fatalf("нет %q:\n%s", want, all)
 		}
 	}
-	selected(t, f.last(), "[ Начать обход ]")
+	selected(t, f.last(), "► Начать обход ◄")
 	// Отмена and Esc
 	useTerm(t, 80, 25, k(KeyUp), k(KeyEnter))
 	if _, ok := editGrid(progGrid()); ok {
@@ -322,6 +322,8 @@ func TestScanScreen(t *testing.T) {
 		useTerm(t, sz[0], sz[1])
 		p := newPage(menuTitle("3"))
 		p.info = scanInfo(len(done), len(g.Points()), time.Now().Add(-time.Minute), "10/40 X 1 Y 2 Z 0.03", "")
+		p.nolog = true
+		p.keys = []string{"Esc", "стоп между точками"}
 		p.pic = func(w, h int) []string {
 			return fitRows(h, func(r int) []string { return scanView(g, &cut, done, true, w, r) })
 		}
@@ -329,7 +331,7 @@ func TestScanScreen(t *testing.T) {
 		fr := p.view(sz[0], sz[1])
 		onScreen(t, "обход", fr, sz[0])
 		all := plainFrame(fr)
-		for _, want := range []string{"10 из 48", "осталось ~", "Esc", "1/40"} {
+		for _, want := range []string{"10 из 48", "осталось ~", "Esc", "10/40"} {
 			if !strings.Contains(all, want) {
 				t.Errorf("%v: нет %q\n%s", sz, want, all)
 			}

@@ -265,7 +265,7 @@ func (f *gridForm) form() []string {
 		if i >= gfStart {
 			b := "[ " + gridLabels[i] + " ]"
 			if i == f.sel {
-				body = append(body, center(hilite(b), in))
+				body = append(body, center(hilite("► "+gridLabels[i]+" ◄"), in))
 			} else {
 				body = append(body, center(b, in))
 			}
