@@ -90,3 +90,7 @@ func conDone() {
 // conFlushInput: keys still in the terminal are read into the channel and
 // dropped there; the terminal side needs nothing.
 func conFlushInput() {}
+
+// Terminals on a Mac or Linux have the rounded corners; the raster font of a
+// Windows 7 console does not (cp866), so there the corners stay square.
+func init() { outer = frame{"╭", "╮", "╰", "╯", "─", "│", "├", "┤"} }

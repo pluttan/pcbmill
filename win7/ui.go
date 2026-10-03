@@ -10,18 +10,24 @@ import (
 	"time"
 )
 
-// colW is the width of the text column: boxes, the menu, the log.
+// colW is the width of the text column inside the outer frame: the menu, the log.
 func colW(w int) int {
-	if w > 78 {
-		return 78
+	if w-4 > 76 {
+		return 76
 	}
-	return w
+	if w < 8 {
+		return w
+	}
+	return w - 4
 }
 
 // room is how many rows the body of a screen gets between the status line and
 // the hint line.
 func room(w, h int) int {
-	n := h - 1 - len(topLines("", w))
+	n := h - 2 - len(topLines("", w))
+	if n < h-2 {
+		n-- // the empty line under the status
+	}
 	if n < 3 {
 		n = 3
 	}
@@ -119,9 +125,9 @@ func (d *dialog) box(w int) []string {
 	}
 	body = append(body, center(strings.Join(bs, "   "), in), "")
 	if d.alarm {
-		return boxC(thick, cAlarm, alarmBadge(d.title), body, bw)
+		return boxC(outer, cAlarm, alarmBadge(d.title), body, bw)
 	}
-	return boxC(thick, cWhite, d.title, body, bw)
+	return boxC(outer, cWhite, d.title, body, bw)
 }
 
 func (d *dialog) hint(w int) string {
@@ -141,7 +147,7 @@ func (d *dialog) show() int {
 			return screen(w, h, curHead, b, d.hint(w))
 		}
 		fr := overlay(base(w, h), b, w, h)
-		fr[h-1] = d.hint(w)
+		fr[h-1] = frameBottom(d.hint(w), w)
 		return fr
 	}
 	res := 0
@@ -336,7 +342,7 @@ func (p *page) view(w, h int) []string {
 		used += len(b) + 1
 	}
 	if p.pic != nil {
-		pw := w
+		pw := w - 4 // inside the outer frame
 		if pw > 110 {
 			pw = 110
 		}

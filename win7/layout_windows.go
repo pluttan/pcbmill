@@ -86,8 +86,8 @@ func setInk(h uintptr, mark byte) {
 		curAttr = curAttr&0xFFF0 | uint16(mark-'A')
 	case mark >= 'a' && mark < 'a'+16:
 		curAttr = curAttr&0xFF0F | uint16(mark-'a')<<4
-	default:
-		curAttr = startAttr
+	default: // the plain colour: white on the console's own background
+		curAttr = startAttr&0xFFF0 | 0x0F
 	}
 	pSetConsoleTextAttribute.Call(h, uintptr(curAttr))
 }

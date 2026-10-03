@@ -317,7 +317,9 @@ func (f *gridForm) summary(w int) []string {
 
 func (f *gridForm) view(w, h int) []string {
 	cut := rect{f.prog.X0, f.prog.X1, f.prog.Y0, f.prog.Y1}
-	rows := room(w, h)
+	fw := w // the frame is w wide, the body w-4
+	w -= 4
+	rows := room(fw, h)
 	form := f.form()
 	sum := f.summary(colW(w))
 	var body []string
@@ -336,11 +338,11 @@ func (f *gridForm) view(w, h int) []string {
 			body = stack(form, sum, pic)
 		}
 	}
-	hint := hints(w, "↑↓", "поле", "← →", "меньше / больше", "Enter", "ввести число", "Esc", "отмена")
+	hint := hints(fw, "↑↓", "поле", "← →", "меньше / больше", "Enter", "ввести число", "Esc", "отмена")
 	if f.edit != nil {
-		hint = hints(w, "Enter", "принять", "Esc", "отменить", "← →", "по числу")
+		hint = hints(fw, "Enter", "принять", "Esc", "отменить", "← →", "по числу")
 	}
-	return screen(w, h, curHead, body, hint)
+	return screen(fw, h, curHead, body, hint)
 }
 
 // editGrid lets the operator change the map layout before the scan; false = cancelled.

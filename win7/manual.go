@@ -50,6 +50,8 @@ func (s *manual) do(raw string) bool {
 		}
 	}
 	if moving || in == "lift" {
+		// the command first, its result (copper found, a stop) under it
+		logLine(paint(cHint, time.Now().Format("15:04:05")) + "  " + s.said(in))
 		s.busy = in
 		draw(s.view) // show what is being sent before the keys go out
 		defer func() { s.busy = "" }()
@@ -178,8 +180,6 @@ func (s *manual) do(raw string) bool {
 	}
 	if err != nil {
 		sayStop(err)
-	} else if moving || in == "lift" {
-		logLine(paint(cHint, time.Now().Format("15:04:05")) + "  " + s.said(in))
 	}
 	if m != nil {
 		if e := m.Alive(); e != nil {

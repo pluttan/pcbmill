@@ -159,13 +159,13 @@ func (c *tableCanvas) render(xs, ys []float64) []string {
 		xTick[c.col(x)] = true
 	}
 	var out []string
-	out = append(out, paint(cHint, fmt.Sprintf("%*s ", gutter-1, "Y, мм"))+paint(cFrame, "▲"))
+	out = append(out, paint(cHint, fmt.Sprintf("%*s ", gutter-1, "Y, мм"))+paint(cAxis, "▲"))
 	for r := 0; r < c.rows; r++ {
 		l, axis := spaces(gutter), "│"
 		if v, ok := yTick[r]; ok {
 			l, axis = fmt.Sprintf("%*s ", gutter-1, mm(v)), "┤"
 		}
-		out = append(out, l+paint(cFrame, axis)+strings.Join(c.cell[r], ""))
+		out = append(out, l+paint(cAxis, axis)+strings.Join(c.cell[r], ""))
 	}
 	var ax strings.Builder
 	for k := 0; k < c.cols; k++ {
@@ -175,7 +175,7 @@ func (c *tableCanvas) render(xs, ys []float64) []string {
 			ax.WriteString("─")
 		}
 	}
-	out = append(out, spaces(gutter)+paint(cFrame, "└"+ax.String()+"─►")+paint(cHint, " X, мм"))
+	out = append(out, spaces(gutter)+paint(cAxis, "└"+ax.String()+"─►")+paint(cHint, " X, мм"))
 	// X labels: the ends first, then whatever fits between them with a space around
 	width := gutter + 1 + c.cols + 2
 	lab := []rune(spaces(width + 6))

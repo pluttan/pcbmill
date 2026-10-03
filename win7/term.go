@@ -187,89 +187,123 @@ func blockWidth(lines []string) int {
 	return w
 }
 
-// headBar is the top line of every screen: the program, the screen, and in
-// emulation a yellow mark at the right end.
-func headBar(title string, w int) string {
+// The whole program sits in one frame the size of the window: the program and
+// the screen in its top edge, the keys in its bottom edge, the status lines
+// at the top inside, the body centred in the rest. Rounded corners where the
+// font has them (outer, set per platform).
+
+// frameTop is the top edge: "pcbscan · screen" on the left, ЭМУЛЯЦИЯ on the right.
+func frameTop(title string, w int) string {
+	f := outer
+	left := paint(cLightCyan, " pcbscan ")
+	if title != "" {
+		left += paint(cHint, "· ") + paint(cTitle, title+" ")
+	}
 	right := ""
 	if simM != nil {
-		right = badge(cBlack, cYellow, "ЭМУЛЯЦИЯ") + on(cBarFg, cBarBg, " ")
+		right = paint(cYellow, " ЭМУЛЯЦИЯ ")
 	}
-	left := on(cBarFg, cBarBg, " pcbscan ")
-	if title != "" {
-		left += on(cDark, cBarBg, "│") + on(cBarFg, cBarBg, " "+title+" ")
+	n := w - 4 - vlen(right)
+	if n < 0 {
+		n, right = w-4, ""
 	}
-	if n := w - vlen(right); vlen(left) > n {
+	if vlen(left) > n {
 		left, _ = cutv(left, n)
 		left += plain
 	}
-	return left + on(cBarFg, cBarBg, spaces(w-vlen(left)-vlen(right))) + right
+	return paint(cFrame, f.tl+f.h) + left + paint(cFrame, repeat(f.h, n-vlen(left))) + right + paint(cFrame, f.h+f.tr)
 }
 
-// topLines: the head bar and the status line under it.
-func topLines(title string, w int) []string {
-	top := []string{headBar(title, w)}
-	if statusFn != nil {
-		top = append(top, statusLine(statusFn(), w)...)
+// frameBottom is the bottom edge with the keys of the screen set into it.
+func frameBottom(hint string, w int) string {
+	f := outer
+	if vlen(hint) > w-6 {
+		hint, _ = cutv(hint, w-6)
+		hint += plain
 	}
-	return top
-}
-
-// screen lays a frame out: the head bar and the status line on top, the key
-// bar at the bottom, the body centred both ways in between. A body too tall
-// loses its last lines, one too wide is cut: the frame never exceeds w x h.
-func screen(w, h int, title string, body []string, hint string) []string {
-	top := topLines(title, w)
-	bottom := []string{}
 	if hint != "" {
-		bottom = append(bottom, hint)
+		hint = " " + hint + " "
 	}
-	room := h - len(top) - len(bottom)
+	return paint(cFrame, f.bl+f.h) + hint + paint(cFrame, repeat(f.h, w-3-vlen(hint))+f.br)
+}
+
+// topLines: the status lines at the top inside the frame, one column in.
+func topLines(title string, w int) []string {
+	if statusFn == nil {
+		return nil
+	}
+	return statusLine(statusFn(), w-4)
+}
+
+// screen lays a frame out: the outer frame, the status lines at the top inside
+// it and the body centred both ways under them. A body too tall loses its last
+// lines, one too wide is cut: the frame never exceeds w x h.
+func screen(w, h int, title string, body []string, hint string) []string {
+	if w < 12 || h < 4 { // no room for a frame: the bare body
+		return fit(body, w, h)
+	}
+	iw, ih := w-2, h-2
+	var top []string
+	for _, l := range topLines(title, w) {
+		top = append(top, " "+l)
+	}
+	if len(top) > 0 {
+		top = append(top, "")
+	}
+	room := ih - len(top)
 	if room < 1 {
-		top, room = top[:1], h-1-len(bottom)
+		top, room = nil, ih
 	}
 	if len(body) > room {
 		body = body[:room]
 	}
 	bw := blockWidth(body)
-	if bw > w {
-		bw = w
+	if bw > iw {
+		bw = iw
 	}
-	left := spaces((w - bw) / 2)
-	out := append([]string(nil), top...)
-	pad := (room - len(body)) / 2
-	for i := 0; i < pad; i++ {
-		out = append(out, "")
+	left := spaces((iw - bw) / 2)
+	in := append([]string(nil), top...)
+	for i := 0; i < (room-len(body))/2; i++ {
+		in = append(in, "")
 	}
 	for _, l := range body {
-		if vlen(l) > w {
-			l, _ = cutv(l, w)
-			l += plain
+		in = append(in, left+l)
+	}
+	side := paint(cFrame, outer.v)
+	out := []string{frameTop(title, w)}
+	for i := 0; i < ih; i++ {
+		l := ""
+		if i < len(in) {
+			l = in[i]
 		}
-		out = append(out, left+l)
+		if vlen(l) > iw {
+			l, _ = cutv(l, iw)
+		}
+		out = append(out, side+l+plain+spaces(iw-vlen(l))+side)
 	}
-	for len(out) < h-len(bottom) {
-		out = append(out, "")
-	}
-	return append(out, bottom...)
+	return append(out, frameBottom(hint, w))
 }
 
-// hints is the key bar at the bottom, the whole width: every key a button
-// (white on black) with what it does after it; the last pairs go when too long.
-// A pair with no key is a note.
+// hints are the keys of a screen for the bottom edge: the key white, what it
+// does grey, "·" between; the last pairs go when the edge is too short. A pair
+// with no key is a note.
 func hints(w int, pairs ...string) string {
 	for n := len(pairs) / 2; n > 0; n-- {
-		s := on(cBarFg, cBarBg, " ")
+		s := ""
 		for i := 0; i < n; i++ {
-			if pairs[2*i] != "" {
-				s += on(cWhite, cBlack, " "+pairs[2*i]+" ") + on(cBarFg, cBarBg, " ")
+			if i > 0 {
+				s += "   "
 			}
-			s += on(cBarFg, cBarBg, pairs[2*i+1]+"   ")
+			if pairs[2*i] != "" {
+				s += paint(cTitle, pairs[2*i]) + " "
+			}
+			s += paint(cHint, pairs[2*i+1])
 		}
-		if vlen(s) <= w {
-			return s + on(cBarFg, cBarBg, spaces(w-vlen(s)))
+		if vlen(s) <= w-8 {
+			return s
 		}
 	}
-	return on(cBarFg, cBarBg, spaces(w))
+	return ""
 }
 
 // stack joins blocks top to bottom, each centred on the widest, with an empty
@@ -357,8 +391,12 @@ func putAt(l string, x int, s string) string {
 // cells to the right and one down (a cell is twice as high as it is wide).
 func overlay(base, box []string, w, h int) []string {
 	out := fit(base, w, h)
-	for r := 1; r < h; r++ { // the head bar stays as it is
-		out[r] = paint(cDark, strip(out[r]))
+	for r := 1; r < h-1; r++ { // inside the outer frame dimmed, the frame itself stays
+		rs := []rune(strip(out[r]))
+		if len(rs) < 2 {
+			continue
+		}
+		out[r] = paint(cFrame, string(rs[0])) + paint(cDark, string(rs[1:len(rs)-1])) + paint(cFrame, string(rs[len(rs)-1]))
 	}
 	bw := blockWidth(box)
 	x, y := (w-bw-2)/2, (h-len(box)-1)/2

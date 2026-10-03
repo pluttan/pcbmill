@@ -42,13 +42,23 @@ func onScreen(t *testing.T, what string, lines []string, w int) {
 			t.Errorf("%s, строка %d: ширина %d > %d: %q", what, i, n, w, strip(l))
 		}
 		for _, r := range strip(l) {
-			if !cp866[r] {
+			// the rounded corners exist only in the Unix build (term_unix.go);
+			// on Windows outer keeps the square cp866 ones
+			if !cp866[r] && !strings.ContainsRune(outer.tl+outer.tr+outer.bl+outer.br, r) {
 				t.Errorf("%s, строка %d: символа %q (U+%04X) нет в cp866: %q", what, i, r, r, strip(l))
 			}
 		}
 		if strings.ContainsAny(strip(l), "\n\r\t\x00") {
 			t.Errorf("%s, строка %d: управляющий символ: %q", what, i, l)
 		}
+	}
+}
+
+// On Windows the outer frame must keep cp866 corners.
+func TestOuterDefaultCP866(t *testing.T) {
+	src, _ := os.ReadFile("tui.go")
+	if !strings.Contains(string(src), `outer = frame{"┌", "┐", "└", "┘"`) {
+		t.Fatal("в tui.go у рамки по умолчанию не квадратные углы cp866")
 	}
 }
 
@@ -241,7 +251,7 @@ func TestHeightView(t *testing.T) {
 func TestSourcesCP866(t *testing.T) {
 	files, _ := filepath.Glob("*.go")
 	for _, f := range files {
-		if strings.HasSuffix(f, "_test.go") {
+		if strings.HasSuffix(f, "_test.go") || f == "term_unix.go" { // term_unix: never on Windows
 			continue
 		}
 		src, err := os.ReadFile(f)

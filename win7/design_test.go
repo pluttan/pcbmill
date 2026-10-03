@@ -14,38 +14,57 @@ func withSim(t *testing.T) *simMachine {
 	return simM
 }
 
-// The bars at the top and the bottom take the whole width, keys are buttons.
-func TestBars(t *testing.T) {
-	for _, w := range []int{40, 59, 79, 99} {
-		h := headBar("3  Снять карту высот", w)
-		if vlen(h) != w || !strings.HasPrefix(h, bgInk(cBarBg)) {
-			t.Fatalf("w %d: шапка %d: %q", w, vlen(h), strip(h))
+// The whole program is one frame the size of the window: the screen in the top
+// edge, the keys in the bottom edge, nothing outside it.
+func TestOuterFrame(t *testing.T) {
+	for _, sz := range [][2]int{{40, 12}, {59, 20}, {80, 25}, {100, 40}} {
+		w, h := sz[0], sz[1]
+		hint := hints(w, "Enter", "открыть", "Esc", "назад")
+		fr := screen(w, h, "Снять карту высот", []string{"тело"}, hint)
+		onScreen(t, "рамка", fr, w)
+		if len(fr) != h {
+			t.Fatalf("%dx%d: строк %d", w, h, len(fr))
 		}
-		k := hints(w, "Enter", "открыть", "Esc", "назад")
-		if vlen(k) != w || !strings.Contains(k, bgInk(cBlack)+ink(cWhite)+" Enter ") {
-			t.Fatalf("w %d: подсказки %d: %q", w, vlen(k), k)
+		first, last := strip(fr[0]), strip(fr[h-1])
+		if !strings.HasPrefix(first, outer.tl) || !strings.HasSuffix(first, outer.tr) ||
+			!strings.HasPrefix(last, outer.bl) || !strings.HasSuffix(last, outer.br) {
+			t.Fatalf("%dx%d: углы: %q / %q", w, h, first, last)
 		}
-		onScreen(t, "полосы", []string{h, k}, w)
+		for _, l := range fr[1 : h-1] {
+			p := strip(l)
+			if !strings.HasPrefix(p, outer.v) || !strings.HasSuffix(p, outer.v) {
+				t.Fatalf("%dx%d: бок рамки: %q", w, h, p)
+			}
+		}
+		if !strings.Contains(first, "pcbscan") || !strings.Contains(last, "Enter") {
+			t.Fatalf("%dx%d: кромки: %q / %q", w, h, first, last)
+		}
+		if strings.Contains(strings.Join(fr, ""), bgInk(cBarBg)) {
+			t.Fatalf("%dx%d: остались полосы", w, h)
+		}
 	}
-	if strings.Contains(strip(headBar("x", 79)), "ЭМУЛЯЦИЯ") {
+	if strings.Contains(strip(frameTop("x", 79)), "ЭМУЛЯЦИЯ") {
 		t.Fatal("метка эмуляции без эмуляции")
 	}
 	withSim(t)
-	if h := headBar("x", 79); !strings.Contains(strip(h), "ЭМУЛЯЦИЯ") || !strings.Contains(h, bgInk(cYellow)) {
-		t.Fatalf("нет метки эмуляции: %q", h)
+	if h := frameTop("x", 79); !strings.Contains(strip(h), "ЭМУЛЯЦИЯ") || vlen(h) != 79 {
+		t.Fatalf("нет метки эмуляции: %q", strip(h))
 	}
 }
 
-// A selected line is a bar across the whole inside of its panel, margins too.
+// A selected line is a bar across the whole panel, margins too.
 func TestSelectionBar(t *testing.T) {
 	b := box(thin, "Меню", []string{"  1   один", sel("► 2   два")}, 40)
 	line := b[2]
-	in := strings.TrimSuffix(strings.TrimPrefix(line, paint(cFrame, "│")), paint(cFrame, "│"))
-	if !strings.HasPrefix(in, bgInk(cSelBg)) || vlen(in) != 38 || strings.Count(in, "\x1b") != 3 {
+	in := strings.TrimSuffix(strings.TrimPrefix(line, " "), " ")
+	if !strings.HasPrefix(in, bgInk(cSelBg)) || vlen(in) != 38 {
 		t.Fatalf("полоса не во всю ширину: %q", line)
 	}
 	if !strings.HasPrefix(strip(in), "  ► 2   два") {
 		t.Fatalf("отступ не тот: %q", strip(in))
+	}
+	if strings.ContainsAny(strip(strings.Join(b, "")), "┌┐└┘│") {
+		t.Fatalf("у панели внутри общей рамки своя рамка: %q", b)
 	}
 }
 
@@ -62,7 +81,7 @@ func TestOverlayShadow(t *testing.T) {
 	onScreen(t, "диалог", fr, 80)
 	top := -1
 	for i, l := range fr {
-		if strings.Contains(l, "╔") {
+		if strings.Contains(strip(l), outer.tl) && i > 0 {
 			top = i
 		}
 	}
@@ -70,7 +89,7 @@ func TestOverlayShadow(t *testing.T) {
 		t.Fatal("нет диалога")
 	}
 	right := []rune(strip(fr[top+1]))
-	x := strings.Index(strip(fr[top]), "╗")
+	x := strings.LastIndex(strip(fr[top]), outer.tr)
 	x = len([]rune(strip(fr[top])[:x]))
 	if string(right[x+1:x+3]) != "░░" {
 		t.Fatalf("нет тени справа: %q", strip(fr[top+1]))
@@ -78,10 +97,11 @@ func TestOverlayShadow(t *testing.T) {
 	if !strings.Contains(strip(fr[top+len(b)]), repeat("░", 20)) {
 		t.Fatalf("нет тени снизу: %q", strip(fr[top+len(b)]))
 	}
-	// under the dialog the menu is grey: no colour but the dim one outside the box
+	// under the dialog the menu is grey: no colour but the dim one (and the
+	// white outer frame at the sides) outside the box
 	for _, l := range fr[1 : top-1] {
 		for i := 0; i+1 < len(l); i++ {
-			if l[i] == esc && l[i+1] != '0' && l[i+1] != byte('A'+cDark) {
+			if l[i] == esc && l[i+1] != '0' && l[i+1] != byte('A'+cDark) && l[i+1] != byte('A'+cFrame) {
 				t.Fatalf("фон не приглушён: %q", l)
 			}
 		}

@@ -35,7 +35,8 @@ const (
 // frames dark grey with white titles, red only for a stop, yellow only for
 // contact, green only for "fine".
 const (
-	cFrame = cDark         // panel frames and map axes
+	cFrame = cWhite        // the outer frame and the dialogs
+	cAxis  = cDark         // map axes
 	cTitle = cWhite        // titles, values that matter
 	cKey   = cLightCyan    // keys named inside a text
 	cHint  = cDark         // hints, units
@@ -94,8 +95,8 @@ func ansiOf(s string) string {
 		}
 		i++
 		m := s[i]
-		if m == '0' {
-			b.WriteString("\x1b[0m")
+		if m == '0' { // the plain colour is white
+			b.WriteString("\x1b[0;97m")
 			continue
 		}
 		base, c := 30, int(m-'A')
@@ -234,10 +235,11 @@ func wrap(s string, w, hang int) []string {
 
 type frame struct{ tl, tr, bl, br, h, v, ml, mr string }
 
-// Panels have the thin frame, only dialogs over the screen the double one.
+// One frame round the whole program (outer, also the dialogs over it); the
+// panels inside have none (thin: a title line and an indented body).
 var (
-	thin  = frame{"┌", "┐", "└", "┘", "─", "│", "├", "┤"}
-	thick = frame{"╔", "╗", "╚", "╝", "═", "║", "╟", "╢"}
+	thin  = frame{" ", " ", " ", " ", " ", " ", " ", " "}
+	outer = frame{"┌", "┐", "└", "┘", "─", "│", "├", "┤"} // rounded on terminals with the glyphs
 )
 
 // pad is the inner margin of every panel and dialog, left and right.
@@ -265,6 +267,9 @@ func boxC(f frame, fc int, title string, body []string, w int) []string {
 		w = 2*pad + 6
 	}
 	inner := w - 2 - 2*pad
+	if f == thin {
+		return panel(title, body, w, inner)
+	}
 	var out []string
 	if title == "" {
 		out = append(out, paint(fc, f.tl+repeat(f.h, w-2)+f.tr))
@@ -279,11 +284,7 @@ func boxC(f frame, fc int, title string, body []string, w int) []string {
 	for _, l := range body {
 		switch {
 		case l == sep:
-			mid := f.h
-			if f.h == "═" {
-				mid = "─"
-			}
-			out = append(out, paint(fc, f.ml+repeat(mid, w-2)+f.mr))
+			out = append(out, paint(fc, f.ml+repeat(f.h, w-2)+f.mr))
 		case strings.HasPrefix(l, selMark):
 			t, _ := cutv(l[len(selMark):], inner)
 			out = append(out, side+hilite(spaces(pad)+padRight(strip(t), inner)+spaces(pad))+side)
@@ -294,6 +295,30 @@ func boxC(f frame, fc int, title string, body []string, w int) []string {
 		}
 	}
 	out = append(out, paint(fc, f.bl+repeat(f.h, w-2)+f.br))
+	return out
+}
+
+// panel is a box without a frame, inside the outer one: the title in colour
+// over the body, a thin grey rule for sep, the selection bar as wide as a box.
+func panel(title string, body []string, w, inner int) []string {
+	var out []string
+	if title != "" {
+		t, _ := cutv(strip(title), w-2*pad)
+		out = append(out, spaces(pad)+paint(cLightCyan, t)+spaces(w-pad-vlen(t)))
+	}
+	for _, l := range body {
+		switch {
+		case l == sep:
+			out = append(out, spaces(pad)+paint(cHint, repeat("─", w-2*pad))+spaces(pad))
+		case strings.HasPrefix(l, selMark):
+			t, _ := cutv(l[len(selMark):], inner)
+			out = append(out, " "+hilite(spaces(pad)+padRight(strip(t), inner)+spaces(pad))+" ")
+		default:
+			for _, p := range wrap(l, inner, 2) {
+				out = append(out, " "+spaces(pad)+padRight(p, inner)+spaces(pad)+" ")
+			}
+		}
+	}
 	return out
 }
 

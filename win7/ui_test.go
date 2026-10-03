@@ -279,7 +279,7 @@ func TestConfirm(t *testing.T) {
 		if len(fr) != sz[1] || !strings.Contains(plainFrame(fr), "ОСТАНОВ") || !strings.Contains(plainFrame(fr), "► OK ◄") {
 			t.Fatalf("%v:\n%s", sz, plainFrame(fr))
 		}
-		if !strings.Contains(strings.Join(fr, ""), ink(cAlarm)+"╔") {
+		if !strings.Contains(strings.Join(fr, ""), ink(cAlarm)+outer.tl) {
 			t.Error("рамка ОСТАНОВ не красная")
 		}
 	}
