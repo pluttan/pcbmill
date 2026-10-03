@@ -24,8 +24,8 @@ func colW(w int) int {
 // room is how many rows the body of a screen gets between the status line and
 // the hint line.
 func room(w, h int) int {
-	n := h - 2 - len(topLines("", w))
-	if n < h-2 {
+	n := h - 4 - len(topLines("", w)) // the edges and a line of air at the top and bottom
+	if n < h-4 {
 		n-- // the empty line under the status
 	}
 	if n < 3 {
@@ -91,8 +91,8 @@ func (d *dialog) key(k Key) (int, bool) {
 // empty line above and under the text, the buttons all of one width.
 func (d *dialog) box(w int) []string {
 	bw := blockWidth(d.text) + 2 + 2*pad + 4
-	if bw < 36 {
-		bw = 36
+	if bw < 52 { // room for the keys in the bottom edge
+		bw = 52
 	}
 	if bw > 64 {
 		bw = 64
@@ -124,10 +124,13 @@ func (d *dialog) box(w int) []string {
 		}
 	}
 	body = append(body, center(strings.Join(bs, "   "), in), "")
+	fc, title := cWhite, d.title
 	if d.alarm {
-		return boxC(outer, cAlarm, alarmBadge(d.title), body, bw)
+		fc, title = cAlarm, alarmBadge(d.title)
 	}
-	return boxC(outer, cWhite, d.title, body, bw)
+	b := boxC(outer, fc, title, body, bw)
+	b[len(b)-1] = bottomEdge(fc, d.hint(bw), bw) // its keys in its own bottom edge
+	return b
 }
 
 func (d *dialog) hint(w int) string {
@@ -146,9 +149,7 @@ func (d *dialog) show() int {
 		if base == nil {
 			return screen(w, h, curHead, b, d.hint(w))
 		}
-		fr := overlay(base(w, h), b, w, h)
-		fr[h-1] = frameBottom(d.hint(w), w)
-		return fr
+		return overlay(base(w, h), b, w, h)
 	}
 	res := 0
 	run(view, func(k Key) bool {

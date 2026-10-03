@@ -25,16 +25,37 @@ func TestOuterFrame(t *testing.T) {
 		if len(fr) != h {
 			t.Fatalf("%dx%d: строк %d", w, h, len(fr))
 		}
-		first, last := strip(fr[0]), strip(fr[h-1])
+		// the frame: the first and the last line that are not empty
+		a, b := 0, h-1
+		for a < h && strings.TrimSpace(strip(fr[a])) == "" {
+			a++
+		}
+		for b > a && strings.TrimSpace(strip(fr[b])) == "" {
+			b--
+		}
+		first, last := strings.TrimSpace(strip(fr[a])), strings.TrimSpace(strip(fr[b]))
 		if !strings.HasPrefix(first, outer.tl) || !strings.HasSuffix(first, outer.tr) ||
 			!strings.HasPrefix(last, outer.bl) || !strings.HasSuffix(last, outer.br) {
 			t.Fatalf("%dx%d: углы: %q / %q", w, h, first, last)
 		}
-		for _, l := range fr[1 : h-1] {
-			p := strip(l)
+		for _, l := range fr[a+1 : b] {
+			p := strings.TrimSpace(strip(l))
 			if !strings.HasPrefix(p, outer.v) || !strings.HasSuffix(p, outer.v) {
 				t.Fatalf("%dx%d: бок рамки: %q", w, h, p)
 			}
+		}
+		// in the middle of the window, not the whole of it
+		top, bottom := a, h-1-b
+		if top-bottom > 1 || bottom-top > 1 {
+			t.Fatalf("%dx%d: рамка не посередине по высоте: сверху %d, снизу %d", w, h, top, bottom)
+		}
+		lft := len([]rune(strip(fr[a]))) - len([]rune(strings.TrimLeft(strip(fr[a]), " ")))
+		rgt := w - len([]rune(strings.TrimRight(strip(fr[a]), " ")))
+		if lft-rgt > 1 || rgt-lft > 1 {
+			t.Fatalf("%dx%d: рамка не посередине по ширине: слева %d, справа %d", w, h, lft, rgt)
+		}
+		if w >= 100 && (lft == 0 || top == 0) {
+			t.Fatalf("%dx%d: рамка на всё окно", w, h)
 		}
 		if !strings.Contains(first, "pcbscan") || !strings.Contains(last, "Enter") {
 			t.Fatalf("%dx%d: кромки: %q / %q", w, h, first, last)

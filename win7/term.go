@@ -215,7 +215,10 @@ func frameTop(title string, w int) string {
 }
 
 // frameBottom is the bottom edge with the keys of the screen set into it.
-func frameBottom(hint string, w int) string {
+func frameBottom(hint string, w int) string { return bottomEdge(cFrame, hint, w) }
+
+// bottomEdge is a bottom edge in colour fc with the keys set into it.
+func bottomEdge(fc int, hint string, w int) string {
 	f := outer
 	if vlen(hint) > w-6 {
 		hint, _ = cutv(hint, w-6)
@@ -224,7 +227,7 @@ func frameBottom(hint string, w int) string {
 	if hint != "" {
 		hint = " " + hint + " "
 	}
-	return paint(cFrame, f.bl+f.h) + hint + paint(cFrame, repeat(f.h, w-3-vlen(hint))+f.br)
+	return paint(fc, f.bl+f.h) + hint + paint(fc, repeat(f.h, w-3-vlen(hint))+f.br)
 }
 
 // topLines: the status lines at the top inside the frame, one column in.
@@ -235,53 +238,90 @@ func topLines(title string, w int) []string {
 	return statusLine(statusFn(), w-4)
 }
 
-// screen lays a frame out: the outer frame, the status lines at the top inside
-// it and the body centred both ways under them. A body too tall loses its last
-// lines, one too wide is cut: the frame never exceeds w x h.
+// frameMin is the narrowest the frame gets, so screens do not jump in width
+// from one to the next more than their content needs.
+const frameMin = 64
+
+// screen lays a frame out: the frame as big as its content (the status lines,
+// the body, an empty line of air at the top and the bottom), in the middle of
+// the window. A body too tall loses its last lines, one too wide is cut: the
+// frame never exceeds w x h.
 func screen(w, h int, title string, body []string, hint string) []string {
 	if w < 12 || h < 4 { // no room for a frame: the bare body
 		return fit(body, w, h)
 	}
-	iw, ih := w-2, h-2
 	var top []string
 	for _, l := range topLines(title, w) {
 		top = append(top, " "+l)
 	}
+	room := h - 2 - 2 // the edges and the air lines
 	if len(top) > 0 {
-		top = append(top, "")
+		room -= len(top) + 1
 	}
-	room := ih - len(top)
 	if room < 1 {
-		top, room = nil, ih
+		top, room = nil, h-2
 	}
 	if len(body) > room {
 		body = body[:room]
 	}
+	// the frame: wide enough for the widest line with a margin, the title and the keys
+	fw := blockWidth(body) + 6
+	for _, l := range top {
+		if n := vlen(l) + 3; n > fw {
+			fw = n
+		}
+	}
+	if n := vlen(hint) + 8; n > fw {
+		fw = n
+	}
+	if n := vlen(title) + 30; n > fw {
+		fw = n
+	}
+	if fw < frameMin {
+		fw = frameMin
+	}
+	if fw > w {
+		fw = w
+	}
+	iw := fw - 2
 	bw := blockWidth(body)
 	if bw > iw {
 		bw = iw
 	}
 	left := spaces((iw - bw) / 2)
-	in := append([]string(nil), top...)
-	for i := 0; i < (room-len(body))/2; i++ {
+	in := []string{""}
+	if len(top) > 0 {
+		in = append(in, top...)
 		in = append(in, "")
 	}
 	for _, l := range body {
 		in = append(in, left+l)
 	}
+	if len(in)+2 < h {
+		in = append(in, "")
+	}
 	side := paint(cFrame, outer.v)
-	out := []string{frameTop(title, w)}
-	for i := 0; i < ih; i++ {
-		l := ""
-		if i < len(in) {
-			l = in[i]
-		}
+	box := []string{frameTop(title, fw)}
+	for _, l := range in {
 		if vlen(l) > iw {
 			l, _ = cutv(l, iw)
 		}
-		out = append(out, side+l+plain+spaces(iw-vlen(l))+side)
+		box = append(box, side+l+plain+spaces(iw-vlen(l))+side)
 	}
-	return append(out, frameBottom(hint, w))
+	box = append(box, frameBottom(hint, fw))
+	// in the middle of the window
+	x, y := (w-fw)/2, (h-len(box))/2
+	out := make([]string, 0, h)
+	for i := 0; i < y; i++ {
+		out = append(out, "")
+	}
+	for _, l := range box {
+		out = append(out, spaces(x)+l)
+	}
+	for len(out) < h {
+		out = append(out, "")
+	}
+	return out
 }
 
 // hints are the keys of a screen for the bottom edge: the key white, what it
@@ -391,12 +431,8 @@ func putAt(l string, x int, s string) string {
 // cells to the right and one down (a cell is twice as high as it is wide).
 func overlay(base, box []string, w, h int) []string {
 	out := fit(base, w, h)
-	for r := 1; r < h-1; r++ { // inside the outer frame dimmed, the frame itself stays
-		rs := []rune(strip(out[r]))
-		if len(rs) < 2 {
-			continue
-		}
-		out[r] = paint(cFrame, string(rs[0])) + paint(cDark, string(rs[1:len(rs)-1])) + paint(cFrame, string(rs[len(rs)-1]))
+	for r := range out { // the screen under the dialog dimmed, frame and all
+		out[r] = paint(cDark, strip(out[r]))
 	}
 	bw := blockWidth(box)
 	x, y := (w-bw-2)/2, (h-len(box)-1)/2

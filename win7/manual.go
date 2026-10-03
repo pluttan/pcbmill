@@ -391,7 +391,7 @@ func (s *manual) view(w, h int) []string {
 	if len(ls) > n {
 		ls = ls[len(ls)-n:]
 	}
-	for len(ls) < n {
+	for len(ls) < n && len(ls) < 4 { // a little room to grow, not a column of empty lines
 		ls = append(ls, "")
 	}
 	journal := box(thin, "Журнал", ls, bw)
