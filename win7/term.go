@@ -195,14 +195,7 @@ func blockWidth(lines []string) int {
 // frameTop is the top edge: "pcbscan · screen" on the left, ЭМУЛЯЦИЯ on the right.
 func frameTop(title string, w int) string {
 	f := outer
-	left := paint(cLightCyan, " pcbscan ")
-	if title != "" {
-		left += paint(cHint, "· ") + paint(cTitle, title+" ")
-	}
-	right := ""
-	if simM != nil {
-		right = paint(cYellow, " ЭМУЛЯЦИЯ ")
-	}
+	left, right := topParts(title)
 	n := w - 4 - vlen(right)
 	if n < 0 {
 		n, right = w-4, ""
@@ -212,6 +205,37 @@ func frameTop(title string, w int) string {
 		left += plain
 	}
 	return paint(cFrame, f.tl+f.h) + left + paint(cFrame, repeat(f.h, n-vlen(left))) + right + paint(cFrame, f.h+f.tr)
+}
+
+// topWidth is how wide the frame must be for its top edge to show it all.
+func topWidth(title string) int {
+	left, right := topParts(title)
+	return vlen(left) + vlen(right) + 6
+}
+
+// topParts: the program and the screen on the left; the state of the МК and
+// NcStudio and the emulation mark on the right.
+func topParts(title string) (string, string) {
+	left := paint(cLightCyan, " pcbscan ")
+	if title != "" {
+		left += paint(cHint, "· ") + paint(cTitle, title+" ")
+	}
+	right := ""
+	if statusFn != nil {
+		right = " " + edgeStatus(statusFn()) + " "
+	}
+	if simM != nil {
+		if right == "" {
+			right = " "
+		} else {
+			right += "  "
+		}
+		right += paint(cYellow, "ЭМУЛЯЦИЯ") + " "
+	}
+	if right != "" {
+		right = paint(cFrame, outer.h) + right
+	}
+	return left, right
 }
 
 // frameBottom is the bottom edge with the keys of the screen set into it.
@@ -230,14 +254,6 @@ func bottomEdge(fc int, hint string, w int) string {
 	return paint(fc, f.bl+f.h) + hint + paint(fc, repeat(f.h, w-3-vlen(hint))+f.br)
 }
 
-// topLines: the status lines at the top inside the frame, one column in.
-func topLines(title string, w int) []string {
-	if statusFn == nil {
-		return nil
-	}
-	return statusLine(statusFn(), w-4)
-}
-
 // frameMin is the narrowest the frame gets, so screens do not jump in width
 // from one to the next more than their content needs.
 const frameMin = 64
@@ -250,31 +266,17 @@ func screen(w, h int, title string, body []string, hint string) []string {
 	if w < 12 || h < 4 { // no room for a frame: the bare body
 		return fit(body, w, h)
 	}
-	var top []string
-	for _, l := range topLines(title, w) {
-		top = append(top, " "+l)
-	}
 	room := h - 2 - 2 // the edges and the air lines
-	if len(top) > 0 {
-		room -= len(top) + 1
-	}
-	if room < 1 {
-		top, room = nil, h-2
-	}
 	if len(body) > room {
 		body = body[:room]
 	}
-	// the frame: wide enough for the widest line with a margin, the title and the keys
+	// the frame: wide enough for the widest line with a margin, the title with
+	// the state in the top edge, and the keys in the bottom one
 	fw := blockWidth(body) + 6
-	for _, l := range top {
-		if n := vlen(l) + 3; n > fw {
-			fw = n
-		}
-	}
 	if n := vlen(hint) + 8; n > fw {
 		fw = n
 	}
-	if n := vlen(title) + 30; n > fw {
+	if n := topWidth(title); n > fw {
 		fw = n
 	}
 	if fw < frameMin {
@@ -290,10 +292,6 @@ func screen(w, h int, title string, body []string, hint string) []string {
 	}
 	left := spaces((iw - bw) / 2)
 	in := []string{""}
-	if len(top) > 0 {
-		in = append(in, top...)
-		in = append(in, "")
-	}
 	for _, l := range body {
 		in = append(in, left+l)
 	}

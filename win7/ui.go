@@ -24,10 +24,7 @@ func colW(w int) int {
 // room is how many rows the body of a screen gets between the status line and
 // the hint line.
 func room(w, h int) int {
-	n := h - 4 - len(topLines("", w)) // the edges and a line of air at the top and bottom
-	if n < h-4 {
-		n-- // the empty line under the status
-	}
+	n := h - 4 // the edges and a line of air at the top and bottom
 	if n < 3 {
 		n = 3
 	}

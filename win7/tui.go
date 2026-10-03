@@ -465,39 +465,26 @@ func flow(cells []string, w int) []string {
 	return out
 }
 
-// statusLine: the MCU and NcStudio as badges, then the values; in emulation a
-// second line with the virtual NcStudio coordinates and the faults.
-func statusLine(st Status, w int) []string {
-	mk := paint(cHint, "МК")
-	if st.Port != "" {
-		mk = paint(cHint, "МК "+st.Port)
+// edgeStatus is the state of the work for the top edge of the frame, short:
+// a coloured mark before МК and NcStudio (green fine, yellow contact, red no
+// answer, grey not open / not found), the faults switched on in emulation.
+func edgeStatus(st Status) string {
+	mc := cDark
+	switch st.MCU {
+	case mcuOpen:
+		mc = cLightGreen
+	case mcuContact:
+		mc = cYellow
+	case mcuDead:
+		mc = cLightRed
 	}
-	nc := offBadge("НЕ НАЙДЕНА")
+	nc := cDark
 	if st.Nc {
-		nc = okBadge("ОК")
+		nc = cLightGreen
 	}
-	cells := []string{mk + " " + mcuBadge(st.MCU), paint(cHint, "NcStudio") + " " + nc}
-	if st.HasZ {
-		cells = append(cells, paint(cHint, "Z от старта ")+val(fmt.Sprintf("%+.3f", st.Z), "мм"))
+	s := paint(mc, "■") + " МК   " + paint(nc, "■") + " NcStudio"
+	if st.Sim != nil && len(st.Sim.Faults) > 0 {
+		s += "   " + paint(cAlarm, fmt.Sprintf("▲ сбоев %d", len(st.Sim.Faults)))
 	}
-	cells = append(cells, st.More...)
-	out := flow(cells, w)
-	if s := st.Sim; s != nil {
-		state := paint(cHint, "стоит")
-		if s.Moving {
-			state = paint(cTouch, "едет ")
-		}
-		pos := paint(cHint, "X") + paint(cTitle, fmt.Sprintf("%8.3f", s.X)) + paint(cHint, "  Y") +
-			paint(cTitle, fmt.Sprintf("%8.3f", s.Y)) + paint(cHint, "  Z") + paint(cTitle, fmt.Sprintf("%+8.3f", s.Z)) +
-			"  " + state
-		sim := []string{pos}
-		if len(s.Faults) == 0 {
-			sim = append(sim, paint(cHint, "сбоев нет"))
-		}
-		for _, f := range s.Faults {
-			sim = append(sim, alarmBadge(f))
-		}
-		out = append(out, flow(sim, w)...)
-	}
-	return out
+	return s
 }

@@ -88,8 +88,8 @@ func plainFrame(fr []string) string { return strip(strings.Join(fr, "\n")) }
 func centred(t *testing.T, what string, fr []string, w int, marker string) {
 	t.Helper()
 	top, bottom, left, right := -1, -1, w, w
-	head := len(topLines("", w))
-	for i, l := range fr[head : len(fr)-1] { // no head bar and status line, no key bar
+	head := 0
+	for i, l := range fr[head : len(fr)-1] {
 		s := strings.TrimRight(strip(l), " ")
 		if s == "" {
 			continue
@@ -233,7 +233,7 @@ func TestMenuScreen(t *testing.T) {
 		centred(t, "меню", fr, sz[0], "Снять карту высот")
 		selected(t, fr, "► 3   Снять карту высот")
 		all := plainFrame(fr)
-		for _, want := range []string{"Выход", "Найти координаты", "Esc", "МК COM5", "сетка точек"} {
+		for _, want := range []string{"Выход", "Найти координаты", "Esc", "■ МК", "сетка точек"} {
 			if !strings.Contains(all, want) {
 				t.Errorf("%v: нет %q\n%s", sz, want, all)
 			}

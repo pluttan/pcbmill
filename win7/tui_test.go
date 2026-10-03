@@ -129,26 +129,28 @@ func TestFrames(t *testing.T) {
 	}
 }
 
+// The state is a coloured mark before МК and NcStudio in the top edge.
 func TestStatusLine(t *testing.T) {
-	for _, w := range []int{30, 50, 78} {
-		for _, st := range []Status{
-			{},
-			{Port: "COM5", MCU: mcuOpen, Nc: true},
-			{Port: "COM12", MCU: mcuContact, Nc: true, Z: -1.2345, HasZ: true,
-				More: []string{"шаг Z 0.100 · быстрый 1.0 · X 1.00 · Y 1.00"}},
-			{Port: "COM3", MCU: mcuDead, Z: 12, HasZ: true},
-		} {
-			onScreen(t, "статус", statusLine(st, w), w)
+	for _, c := range []struct {
+		st   Status
+		mark int
+	}{
+		{Status{}, cDark},
+		{Status{MCU: mcuOpen, Nc: true}, cLightGreen},
+		{Status{MCU: mcuContact, Nc: true}, cYellow},
+		{Status{MCU: mcuDead}, cLightRed},
+	} {
+		e := edgeStatus(c.st)
+		if !strings.HasPrefix(e, paint(c.mark, "■")+" МК") || !strings.Contains(strip(e), "NcStudio") {
+			t.Errorf("%v: %q", c.st, e)
 		}
+		onScreen(t, "кромка", []string{e}, 40)
 	}
-	all := strip(strings.Join(statusLine(Status{Port: "COM5", MCU: mcuContact, Nc: true, HasZ: true}, 78), "\n"))
-	for _, want := range []string{"МК COM5  КОНТАКТ", "NcStudio  ОК", "Z от старта +0.000 мм"} {
-		if !strings.Contains(all, want) {
-			t.Errorf("в статусе нет %q: %q", want, all)
-		}
-	}
-	if s := strip(strings.Join(statusLine(Status{Port: "COM5", MCU: mcuDead}, 78), "")); !strings.Contains(s, "НЕТ СВЯЗИ") {
-		t.Error(s)
+	statusFn = func() Status { return Status{MCU: mcuContact, Nc: true} }
+	defer func() { statusFn = nil }()
+	top := frameTop("главное меню", 70)
+	if vlen(top) != 70 || !strings.Contains(strip(top), "■ МК   ■ NcStudio") {
+		t.Fatalf("в кромке нет состояния: %q", strip(top))
 	}
 }
 

@@ -129,21 +129,16 @@ func TestOverlayShadow(t *testing.T) {
 	}
 }
 
+// In emulation the top edge says so and counts the faults; X Y Z are not there.
 func TestStatusSim(t *testing.T) {
 	st := Status{Port: "эмуляция", MCU: mcuOpen, Nc: true,
 		Sim: &SimInfo{X: 12.5, Y: -1, Z: -1.234, Moving: true, Faults: []string{"ЗАЖИМ", "Z ПОЛЗЁТ"}}}
-	for _, w := range []int{40, 59, 79} {
-		ls := statusLine(st, w)
-		onScreen(t, "статус эмуляции", ls, w)
-		all := strip(strings.Join(ls, "\n"))
-		for _, want := range []string{"X  12.500", "Y  -1.000", "Z  -1.234", "едет", " ЗАЖИМ ", " Z ПОЛЗЁТ "} {
-			if !strings.Contains(all, want) {
-				t.Errorf("w %d: нет %q:\n%s", w, want, all)
-			}
-		}
+	e := strip(edgeStatus(st))
+	if !strings.Contains(e, "сбоев 2") || strings.Contains(e, "12.500") {
+		t.Fatalf("кромка: %q", e)
 	}
-	if l := statusLine(Status{MCU: mcuOpen, Nc: true, Sim: &SimInfo{}}, 59); len(l) != 2 {
-		t.Errorf("при 60 колонках статус эмуляции не в две строки: %q", l)
+	if strings.Contains(strip(edgeStatus(Status{MCU: mcuOpen, Nc: true, Sim: &SimInfo{}})), "сбоев") {
+		t.Fatal("сбои без сбоев")
 	}
 }
 
