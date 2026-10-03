@@ -7,10 +7,14 @@ package main
 
 import (
 	"fmt"
+	"image"
 	"math"
 	"strconv"
 	"strings"
 	"time"
+
+	"pcbscan/gfx"
+	"pcbscan/ui"
 )
 
 type manual struct {
@@ -19,15 +23,15 @@ type manual struct {
 	m                            Touch // nil: the operator chose to work without the MCU
 	port, title                  string
 	step, stepX, stepY, stepFast float64
-	cmd                          *field // the command line, open after : or Tab
+	cmd                          *ui.Field // the command line, open after Tab
+	in                           chan string
 	busy                         string // the command being typed into NcStudio now
 	p                            *page  // the log
 }
 
 func newManual(o opts, nc *NcStudio, m Touch, port string) *manual {
 	s := &manual{o: o, nc: nc, m: m, port: port, title: o.title, step: 0.1, stepX: 1, stepY: 1, stepFast: 1}
-	s.p = &page{title: menuTitle("7")}
-	s.p.screenFn = s.view
+	s.p = &page{title: menuTitle("7"), progress: -1, acts: make(chan string, 8)}
 	return s
 }
 
@@ -51,10 +55,9 @@ func (s *manual) do(raw string) bool {
 	}
 	if moving || in == "lift" {
 		// the command first, its result (copper found, a stop) under it
-		logLine(paint(cHint, time.Now().Format("15:04:05")) + "  " + s.said(in))
-		s.busy = in
-		draw(s.view) // show what is being sent before the keys go out
-		defer func() { s.busy = "" }()
+		logLine(time.Now().Format("15:04:05") + "  " + s.said(in))
+		app.Do(func() { s.busy = in })
+		defer app.Do(func() { s.busy = "" })
 	}
 	var err error
 	switch {
@@ -167,7 +170,7 @@ func (s *manual) do(raw string) bool {
 		return true
 	case strings.HasPrefix(in, "g "):
 		line := strings.ToUpper(strings.TrimSpace(strings.TrimSpace(raw)[2:]))
-		if !confirm("Отправить в NcStudio эту строку?", paint(cKey, line)) {
+		if !confirm("Отправить в NcStudio эту строку?", line) {
 			return true
 		}
 		if err = nc.Grab(); err == nil {
@@ -237,177 +240,183 @@ func num(v float64) string { return strconv.FormatFloat(v, 'f', -1, 64) }
 
 // command is what a key means in manual mode: a command for do, "" for none.
 // Keys that only change a step are commands too (s, sx, sz), so the limits are checked once.
-func (s *manual) command(k Key) string {
-	switch k.Code {
-	case KeyLeft:
-		return "x-"
-	case KeyRight:
-		return "x+"
-	case KeyUp:
-		return "y+"
-	case KeyDown:
-		return "y-"
-	case KeyPgUp:
-		return "lift"
-	case KeyPgDn:
-		return "d"
-	case KeyEsc, KeyCtrlC:
-		return "q"
-	case KeyRune:
-		switch k.R { // the shifted keys first: latin() would map Russian capitals to brackets
-		case ' ':
-			return "u"
-		case '+', '=':
-			return "sxy+"
-		case '-', '_':
-			return "sxy-"
-		case '*':
-			return "s " + num(nextStep(zSteps, s.step, 1))
-		case '/':
-			return "s " + num(nextStep(zSteps, s.step, -1))
-		}
-		switch k.letter() {
-		case 'q':
+// command: the key as a command of the manual mode, "" for none.
+func (s *manual) command(e ui.Event) string {
+	if e.Kind == ui.EvKey {
+		switch e.Key {
+		case ui.KeyLeft:
+			return "x-"
+		case ui.KeyRight:
+			return "x+"
+		case ui.KeyUp:
+			return "y+"
+		case ui.KeyDown:
+			return "y-"
+		case ui.KeyPgUp:
+			return "lift"
+		case ui.KeyPgDn:
+			return "d"
+		case ui.KeyEsc:
 			return "q"
-		case 't':
-			return "t"
 		}
+		return ""
+	}
+	if e.Kind != ui.EvChar {
+		return ""
+	}
+	switch e.Rune { // the shifted keys first: latin() would map Russian capitals to brackets
+	case ' ':
+		return "u"
+	case '+', '=':
+		return "sxy+"
+	case '-', '_':
+		return "sxy-"
+	case '*':
+		return "s " + num(nextStep(zSteps, s.step, 1))
+	case '/':
+		return "s " + num(nextStep(zSteps, s.step, -1))
+	}
+	switch latin(string(e.Rune)) {
+	case "q":
+		return "q"
+	case "t":
+		return "t"
 	}
 	return ""
 }
 
-// key handles one key; false when the operator leaves manual mode.
-func (s *manual) key(k Key) bool {
+// send gives a command to the work goroutine; while it is busy with one the
+// next is dropped, so a held arrow does not pile up moves.
+func (s *manual) send(c string) {
+	if c == "" {
+		return
+	}
+	select {
+	case s.in <- c:
+	default:
+	}
+}
+
+// stepXY: the X/Y step one notch up or down.
+func (s *manual) stepXY(dir int) {
+	v := num(nextStep(xySteps, math.Min(s.stepX, s.stepY), dir))
+	if dir > 0 {
+		v = num(nextStep(xySteps, math.Max(s.stepX, s.stepY), dir))
+	}
+	s.do("sx " + v)
+	s.do("sy " + v)
+}
+
+// onKey runs on the window goroutine: keys become commands.
+func (s *manual) onKey(e ui.Event) bool {
 	if s.cmd != nil {
-		done, cancel := s.cmd.key(k)
+		return false // the command line takes the keys
+	}
+	if e.Kind == ui.EvKey && e.Key == ui.KeyTab {
+		s.cmd = ui.NewField("")
+		return true
+	}
+	c := s.command(e)
+	s.send(c)
+	return c != ""
+}
+
+// panel: the state of the machine, the jog pad and the command line.
+func (s *manual) panel(c *ui.Ctx, r image.Rectangle) int {
+	t := c.T
+	y := r.Min.Y
+	// the contact, large
+	label, col := "разомкнуто", t.Green
+	switch {
+	case s.m == nil:
+		label, col = "МК не подключён: касание не видно", t.Overlay1
+	case s.m.Alive() != nil:
+		label, col = "МК НЕ ОТВЕЧАЕТ: двигать можно только вверх", t.Red
+	case s.m.State():
+		label, col = "КОНТАКТ: фреза на меди, вниз и вбок нельзя", t.Yellow
+	}
+	hb := t.Si(40)
+	c.C.FillRoundRect(float64(r.Min.X), float64(y), float64(r.Dx()), float64(hb), t.S(10), gfx.Alpha(col, 0.15))
+	c.C.FillCircle(float64(r.Min.X)+t.S(20), float64(y)+float64(hb)/2, t.S(6), col)
+	c.LabelIn(image.Rect(r.Min.X+t.Si(36), y, r.Max.X, y+hb), label, ui.Style{Kind: ui.Bold, Size: ui.SizeBody, Color: col}, 0)
+	y += hb + t.Si(12)
+	// numbers
+	mono := ui.Style{Kind: ui.Mono, Size: ui.SizeBody, Color: t.Text}
+	c.Label(r.Min.X, y, fmt.Sprintf("Z от старта %+9.3f мм", s.nc.z), mono)
+	y += c.LineH(mono) + t.Si(2)
+	c.Label(r.Min.X, y, fmt.Sprintf("шаг Z %s   быстрый %s   X/Y %s / %s мм", num(s.step), num(s.stepFast), num(s.stepX), num(s.stepY)), c.Muted())
+	y += c.LineH(mono) + t.Si(10)
+	if s.busy != "" {
+		c.Label(r.Min.X, y, "в NcStudio: "+s.busy+"   мышь и клавиатуру не трогать", ui.Style{Kind: ui.Regular, Size: ui.SizeBody, Color: t.Blue})
+	} else {
+		c.Label(r.Min.X, y, "СТОП во время движения: щелчок по другому окну", ui.Style{Kind: ui.Regular, Size: ui.SizeBody, Color: t.Overlay2})
+	}
+	y += c.LineH(mono) + t.Si(14)
+	// the jog pad: arrows for X/Y, a column for Z, the steps
+	b := t.Si(44)
+	g := t.Si(6)
+	x0 := r.Min.X
+	pad := []struct {
+		dx, dy int
+		ic     ui.Icon
+		cmd    string
+		lab    string
+	}{{1, 0, ui.IconNone, "y+", "Y+"}, {0, 1, ui.IconNone, "x-", "X-"}, {2, 1, ui.IconNone, "x+", "X+"}, {1, 2, ui.IconNone, "y-", "Y-"}}
+	for _, k := range pad {
+		br := image.Rect(x0+k.dx*(b+g), y+k.dy*(b+g), x0+k.dx*(b+g)+b, y+k.dy*(b+g)+b)
+		if c.Button("man/"+k.cmd, br, k.lab, ui.BtnNormal) {
+			s.send(k.cmd)
+		}
+	}
+	zx := x0 + 3*(b+g) + t.Si(14)
+	zcol := []struct{ cmd, lab string }{{"lift", "Z быстро вверх"}, {"u", "Z вверх"}, {"d", "Z вниз"}}
+	for i, k := range zcol {
+		br := image.Rect(zx, y+i*(b+g), zx+t.Si(150), y+i*(b+g)+b)
+		if c.Button("man/"+k.cmd, br, k.lab, ui.BtnNormal) {
+			s.send(k.cmd)
+		}
+	}
+	tx := zx + t.Si(150) + g
+	if r.Max.X-tx > t.Si(110) {
+		if c.Button("man/t", image.Rect(tx, y, tx+t.Si(130), y+b), "До меди (T)", ui.BtnPrimary) {
+			s.send("t")
+		}
+		if c.Button("man/cmd", image.Rect(tx, y+b+g, tx+t.Si(130), y+2*b+g), "Команда (Tab)", ui.BtnNormal) {
+			s.cmd = ui.NewField("")
+		}
+	}
+	y += 3*(b+g) + t.Si(8)
+	// the steps
+	steps := []struct{ lab, cmd string }{{"шаг X/Y -", "sxy-"}, {"шаг X/Y +", "sxy+"},
+		{"шаг Z -", "s " + num(nextStep(zSteps, s.step, -1))}, {"шаг Z +", "s " + num(nextStep(zSteps, s.step, 1))}}
+	cells := ui.SplitX(image.Rect(r.Min.X, y, r.Max.X, y+t.Si(34)), 4, g)
+	for i, k := range steps {
+		if c.Button("man/st"+k.lab, cells[i], k.lab, ui.BtnGhost) {
+			s.send(k.cmd)
+		}
+	}
+	y += t.Si(34) + t.Si(12)
+	// the command line
+	if s.cmd != nil {
+		fr := image.Rect(r.Min.X, y, r.Max.X, y+t.Si(38))
+		c.SetFocus("man/line")
+		enter, cancel := c.TextField("man/line", fr, s.cmd, ui.Style{Kind: ui.Mono, Size: ui.SizeBody, Color: t.Text}, 0)
+		if enter {
+			line := strings.TrimSpace(s.cmd.String())
+			s.cmd = nil
+			s.send(line)
+		}
 		if cancel {
 			s.cmd = nil
 		}
-		if done {
-			line := s.cmd.String()
-			s.cmd = nil
-			if strings.TrimSpace(line) != "" {
-				return s.run(line)
-			}
-		}
-		return true
-	}
-	if k.Code == KeyTab {
-		s.cmd = newField("")
-		return true
-	}
-	c := s.command(k)
-	switch c {
-	case "":
-		return true
-	case "sxy-", "sxy+":
-		dir := 1
-		if c == "sxy-" {
-			dir = -1
-		}
-		v := num(nextStep(xySteps, math.Min(s.stepX, s.stepY), dir))
-		if dir > 0 {
-			v = num(nextStep(xySteps, math.Max(s.stepX, s.stepY), dir))
-		}
-		s.run("sx " + v)
-		return s.run("sy " + v)
-	}
-	return s.run(c)
-}
-
-// run does a command, then gives the focus back to the console and drops the
-// keys pressed meanwhile: a held arrow must not queue up moves.
-func (s *manual) run(c string) bool {
-	more := s.do(c)
-	backToConsole()
-	term.Flush()
-	return more
-}
-
-// contact is the MCU state as a badge with a word on what it means.
-func (s *manual) contact() string {
-	switch {
-	case s.m == nil:
-		return offBadge("МК НЕ ПОДКЛЮЧЁН") + paint(cHint, "  касание не видно")
-	case s.m.Alive() != nil:
-		return alarmBadge("МК НЕ ОТВЕЧАЕТ") + paint(cHint, "  двигать можно только вверх")
-	case s.m.State():
-		return touchBadge("♦ КОНТАКТ") + paint(cHint, "  фреза на меди: вниз и вбок нельзя")
-	}
-	return okBadge("○ разомкнуто")
-}
-
-func (s *manual) keys() [][2]string {
-	return [][2]string{
-		{"← → ↑ ↓", fmt.Sprintf("X/Y на шаг %s / %s", num(s.stepX), num(s.stepY))},
-		{"PageUp", fmt.Sprintf("Z быстро вверх на %s", num(s.stepFast))},
-		{"PageDown", fmt.Sprintf("Z вниз на %s медленно", num(s.step))},
-		{"Пробел", fmt.Sprintf("Z вверх на %s", num(s.step))},
-		{"T", fmt.Sprintf("вниз до меди, не глубже %s", num(s.o.search))},
-		{"+ -", "шаг X/Y больше / меньше"},
-		{"* /", "шаг Z больше / меньше"},
-		{"Tab", "строка команды: m, g, t, sz"},
-		{"Esc Q", "назад в меню"},
-	}
-}
-
-func (s *manual) view(w, h int) []string {
-	bw := colW(w)
-	st := []string{s.contact()}
-	for _, l := range flow([]string{
-		paint(cHint, "Z от старта") + paint(cTitle, fmt.Sprintf("%+9.3f", s.nc.z)) + paint(cHint, " мм"),
-		paint(cHint, "шаг Z ") + val(num(s.step), ""),
-		paint(cHint, "быстрый ") + val(num(s.stepFast), ""),
-		paint(cHint, "X/Y ") + val(num(s.stepX)+" / "+num(s.stepY), "мм"),
-	}, inner(bw)+1) {
-		st = append(st, l[1:]) // flow starts every line with a space
-	}
-	if s.busy != "" {
-		st = append(st, paint(cKey, "► в NcStudio: "+s.busy)+paint(cHint, "  мышь и клавиатуру не трогать"))
+		y += t.Si(42)
+		y += c.Para(image.Rect(r.Min.X, y, r.Max.X, y+t.Si(200)), "m x5 y-2.5 z1   g G91 G00 X5   t 5   s 0.05   sz 2   sx 5   sy 2", c.Small())
 	} else {
-		st = append(st, paint(cAlarm, "▲ СТОП:")+paint(cHint, " щелчок мышью по другому окну во время движения"))
+		y += c.Para(image.Rect(r.Min.X, y, r.Max.X, y+t.Si(200)), "Клавиши: стрелки X/Y, PageUp/PageDown Z, пробел Z вверх, T до меди, + - * / шаги, Esc выход", c.Small())
 	}
-	state := box(thin, "Станок", st, bw)
-	keys := box(thin, "Клавиши, без Enter", twoCols(s.keys(), inner(bw)), bw)
-	var cmd []string
-	if s.cmd != nil {
-		cmd = box(thin, "Команда", []string{paint(cKey, ": ") + s.cmd.view(inner(bw)-2)}, bw)
-	}
-	used := len(state) + len(keys) + len(cmd) + 3
-	rows := room(w, h)
-	n := rows - used - 4 // the journal frame and a free line above and under
-	if n > 8 {
-		n = 8
-	}
-	s.p.mu.Lock()
-	var ls []string
-	for _, l := range s.p.log {
-		ls = append(ls, wrap(l, inner(bw), 2)...)
-	}
-	s.p.mu.Unlock()
-	if n < 1 {
-		n = 1
-	}
-	if len(ls) > n {
-		ls = ls[len(ls)-n:]
-	}
-	for len(ls) < n && len(ls) < 4 { // a little room to grow, not a column of empty lines
-		ls = append(ls, "")
-	}
-	journal := box(thin, "Журнал", ls, bw)
-	body := stack(state, keys, journal, cmd)
-	if len(body) > rows { // a low window: the key list goes first
-		body = stack(state, journal, cmd)
-	}
-	hint := hints(w, "Esc", "в меню", "Tab", "команда", "PageUp", "вверх")
-	if s.cmd != nil {
-		hint = hints(w, "Enter", "выполнить", "Esc", "закрыть строку")
-	}
-	return screen(w, h, menuTitle("7"), body, hint)
+	return y - r.Min.Y
 }
 
-// cmdManual: the operator drives NcStudio through this program step by step,
-// to see that keystrokes land and the MCU reports contact before any scan.
 func cmdManual(o opts) error {
 	var m Touch
 	var name string
@@ -420,18 +429,53 @@ func cmdManual(o opts) error {
 		m, name = mc, n
 	}
 	s := newManual(o, newNc(o), m, name)
+	s.in = make(chan string, 1)
 	cur = s.p
-	s.p.add(paint(cHint, "Пока команда печатается в NcStudio, мышь и клавиатуру не трогать."))
+	crumb = s.p.title
+	s.p.progress = -1
+	s.p.head = "Ручной режим"
+	s.p.scene = jobToolScene()
+	s.p.extra = s.panel
+	s.p.onKey = s.onKey
+	s.p.btns = []pageBtn{{id: "q", label: "Выход", kind: ui.BtnNormal}}
+	app.Show(s.p)
+	logLine("Пока команда печатается в NcStudio, мышь и клавиатуру не трогать.")
 	if name != "" {
-		sayOK(strip(mcuAt(name)))
+		sayOK(mcuAt(name))
 	}
-	term.Flush()
-	defer faultKeysOn(func() bool { return s.cmd == nil })() // digits go to an open command line
-	run(s.view, s.keyDone, 200*time.Millisecond)
-	return nil
+	backToApp()
+	defer faultKeysOn(func() bool { return s.cmd == nil })()
+	for {
+		select {
+		case c := <-s.in:
+			if !s.run(c) {
+				return nil
+			}
+		case id := <-s.p.acts:
+			if id == "q" {
+				return nil
+			}
+		}
+	}
 }
 
-func (s *manual) keyDone(k Key) bool { return !s.key(k) }
+// run does one command with the machine; false for q.
+func (s *manual) run(c string) bool {
+	switch c {
+	case "sxy+":
+		s.stepXY(1)
+		return true
+	case "sxy-":
+		s.stepXY(-1)
+		return true
+	}
+	machineBusy(true)
+	more := s.do(c)
+	machineBusy(false)
+	backToApp()
+	app.Wake()
+	return more
+}
 
 // parseShift reads "x5 y-2.5 z1" (any of the three, in any order) as relative mm.
 func parseShift(str string) (dx, dy, dz float64, err error) {

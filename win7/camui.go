@@ -143,215 +143,27 @@ func (f camField) show(c *camCfg) string {
 // ===  The form          ===
 // ==========================
 
-const (
-	cbMake = iota
-	cbDefault
-	cbCancel
-	cbCount
-)
-
-var camButtons = [cbCount]string{"Сделать программы", "Числа по умолчанию", "Отмена"}
-
-type camForm struct {
-	c    camCfg
-	sel  int // fields, then buttons
-	edit *field
-	msg  string
-}
-
-func (f *camForm) count() int { return len(camFields) + cbCount }
-
-// key: true and true when the programs are to be made, false and true for back.
-func (f *camForm) key(k Key) (bool, bool) {
-	nf := len(camFields)
-	if f.edit != nil {
-		done, cancel := f.edit.key(k)
-		if cancel {
-			f.edit = nil
-		}
-		if done {
-			fl := camFields[f.sel]
-			v, err := strconv.ParseFloat(strings.ReplaceAll(strings.TrimSpace(f.edit.String()), ",", "."), 64)
-			if err != nil {
-				f.msg = fmt.Sprintf("не число: \"%s\"", f.edit.String())
-			} else if err = fl.valid(v); err != nil {
-				f.msg = err.Error()
-			} else {
-				fl.put(&f.c, v)
-				f.msg = ""
-			}
-			f.edit = nil
-		}
-		return false, false
-	}
-	f.msg = ""
-	switch k.Code {
-	case KeyUp, KeyBackTab:
-		f.sel = (f.sel + f.count() - 1) % f.count()
-	case KeyDown, KeyTab:
-		f.sel = (f.sel + 1) % f.count()
-	case KeyHome:
-		f.sel = 0
-	case KeyEnd:
-		f.sel = nf
-	case KeyLeft, KeyRight:
-		dir := 1.0
-		if k.Code == KeyLeft {
-			dir = -1
-		}
-		if f.sel >= nf {
-			if s := f.sel + int(dir); s >= nf && s < f.count() {
-				f.sel = s
-			}
-			break
-		}
-		fl := camFields[f.sel]
-		v := fl.get(&f.c)
-		if fl.choices != nil {
-			n := float64(len(fl.choices))
-			fl.put(&f.c, math.Mod(v+dir+n, n))
-			break
-		}
-		nv := math.Round((v+dir*fl.step)/fl.step) * fl.step // back onto the steps
-		nv = math.Round(nv*1e6) / 1e6
-		if nv < fl.lo {
-			nv = fl.lo
-		}
-		if nv > fl.hi {
-			nv = fl.hi
-		}
-		fl.put(&f.c, nv)
-	case KeyEnter:
-		switch f.sel - nf {
-		case cbMake:
-			return true, true
-		case cbDefault:
-			f.c = defaultCam()
-		case cbCancel:
-			return false, true
-		default:
-			if camFields[f.sel].choices != nil {
-				fl := camFields[f.sel]
-				fl.put(&f.c, math.Mod(fl.get(&f.c)+1, float64(len(fl.choices))))
-			} else {
-				f.edit = newField(camFields[f.sel].show(&f.c))
+// camNumForm: the numbers of the programs as a form over c.
+func camNumForm(c *camCfg) *numForm {
+	f := &numForm{title: "Числа программ", ok: "Сделать программы", extra: "Числа по умолчанию",
+		onExtra: func() { *c = defaultCam() }}
+	for _, cf := range camFields {
+		cf := cf
+		ff := formField{label: cf.label, unit: cf.unit, group: cf.group, lo: cf.lo, hi: cf.hi, step: cf.step,
+			digits: cf.digits, choices: cf.choices,
+			get: func() float64 { return cf.get(c) }, set: func(v float64) { cf.put(c, v) }}
+		if cf.key == "maskflat" {
+			ff.show = func(v float64) string {
+				if v == 0 {
+					return "та же V"
+				}
+				return ""
 			}
 		}
-	case KeyEsc, KeyCtrlC:
-		return false, true
-	case KeyRune:
-		if f.sel < nf && camFields[f.sel].choices == nil && strings.ContainsRune("0123456789.,", k.R) {
-			f.edit = newField(string(k.R)) // typing starts a new number
-		}
+		f.fields = append(f.fields, ff)
 	}
-	return false, false
-}
-
-const camFormW = 44
-
-// lines: the form body, with the index of the body line of the selection.
-func (f *camForm) lines() ([]string, int) {
-	in := inner(camFormW)
-	var body []string
-	at := 0
-	for i, fl := range camFields {
-		if fl.group != "" {
-			if i > 0 {
-				body = append(body, "")
-			}
-			body = append(body, paint(cLightCyan, fl.group))
-		}
-		if i == f.sel {
-			at = len(body)
-		}
-		lab := padRight("  "+fl.label, 18)
-		v := fl.show(&f.c)
-		switch {
-		case i == f.sel && f.edit != nil:
-			body = append(body, lab+" "+f.edit.view(9)+" "+paint(cHint, fl.unit))
-		case i == f.sel:
-			body = append(body, sel(lab+"◄"+fmt.Sprintf("%9s", v)+" ► "+fl.unit))
-		default:
-			body = append(body, lab+" "+paint(cTitle, fmt.Sprintf("%9s", v))+"   "+paint(cHint, fl.unit))
-		}
+	f.about = func() []string {
+		return []string{fmt.Sprintf("Ширина реза V-фрезы на глубине изоляции %.3f мм.", c.cutWidth(c.IsoDepth))}
 	}
-	body = append(body, sep)
-	for i, b := range camButtons {
-		if len(camFields)+i == f.sel {
-			at = len(body)
-			body = append(body, sel(center("► "+b+" ◄", in)))
-		} else {
-			body = append(body, center(paint(cTitle, b), in))
-		}
-	}
-	return body, at
-}
-
-// form: the part of the form that fits rows lines, scrolled to the selection.
-func (f *camForm) form(rows int) []string {
-	body, at := f.lines()
-	n := rows - 1 // the title line of the panel
-	if n < 5 {
-		n = 5
-	}
-	if len(body) > n {
-		top := at - n/2
-		if top < 0 {
-			top = 0
-		}
-		if top > len(body)-n {
-			top = len(body) - n
-		}
-		up, down := top > 0, top+n < len(body)
-		body = append([]string(nil), body[top:top+n]...)
-		if up {
-			body[0] = center(paint(cHint, "▲ ещё выше"), inner(camFormW))
-		}
-		if down {
-			body[n-1] = center(paint(cHint, "▼ ещё ниже"), inner(camFormW))
-		}
-	}
-	return box(thin, "Числа программ", body, camFormW)
-}
-
-// about: what the numbers give, and what is wrong with them.
-func (f *camForm) about(w int) []string {
-	c := f.c
-	var out []string
-	add := func(s string) { out = append(out, wrap(s, w, 2)...) }
-	iw := c.cutWidth(c.IsoDepth)
-	add(paint(cHint, "рез изоляции ") + val(fmt.Sprintf("%.3f", iw), "мм") +
-		paint(cHint, ", полоса ") + val(fmt.Sprintf("%.2f", iw+iw*(1-overlap)*float64(c.Passes-1)), "мм"))
-	add(paint(cHint, "след на маске ") + val(fmt.Sprintf("%.3f", c.maskWidth(c.MaskDepth)), "мм"))
-	if c.VStep > c.VDepth {
-		add(paint(cAlarm, "▲") + " V-рез: за проход больше всей глубины")
-	}
-	if c.VDepth >= c.Thickness {
-		add(paint(cAlarm, "▲") + " V-рез глубже толщины платы: прорежет стол")
-	}
-	if f.msg != "" {
-		add(paint(cAlarm, "◄ "+f.msg))
-	}
-	return out
-}
-
-func (f *camForm) view(w, h int) []string {
-	fw := w
-	w -= 4
-	rows := room(fw, h)
-	about := f.about(colW(w))
-	body := stack(f.form(rows-len(about)-1), about)
-	hint := hints(fw, "↑↓", "поле", "← →", "меньше / больше", "Enter", "ввести", "Esc", "отмена")
-	if f.edit != nil {
-		hint = hints(fw, "Enter", "принять", "Esc", "отменить", "← →", "по числу")
-	}
-	return screen(fw, h, "задание / Платы / Числа программ", body, hint)
-}
-
-func wrapAll(ls []string, w int) []string {
-	var out []string
-	for _, l := range ls {
-		out = append(out, wrap(l, w, 2)...)
-	}
-	return out
+	return f
 }

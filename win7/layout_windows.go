@@ -2,8 +2,8 @@
 
 package main
 
-// Console colours and size, and the two windows side by side: NcStudio on the
-// left half of the screen, this console on the right, both visible at once.
+// The two windows side by side: NcStudio on the left half of the screen, this
+// program on the right, both visible at once.
 
 import (
 	"strings"
@@ -14,83 +14,20 @@ import (
 )
 
 var (
-	pGetConsoleScreenBufferInfo  = kernel32.NewProc("GetConsoleScreenBufferInfo")
-	pSetConsoleTextAttribute     = kernel32.NewProc("SetConsoleTextAttribute")
-	pSetConsoleScreenBufferSize  = kernel32.NewProc("SetConsoleScreenBufferSize")
-	pSetConsoleWindowInfo        = kernel32.NewProc("SetConsoleWindowInfo")
-	pGetLargestConsoleWindowSize = kernel32.NewProc("GetLargestConsoleWindowSize")
-	pGetCurrentConsoleFont       = kernel32.NewProc("GetCurrentConsoleFont")
-	pSystemParametersInfoW       = user32.NewProc("SystemParametersInfoW")
-	pSetWindowPos                = user32.NewProc("SetWindowPos")
-	pShowWindowAsync             = user32.NewProc("ShowWindowAsync")
-	pGetClientRect               = user32.NewProc("GetClientRect")
-	pGetWindowLongW              = user32.NewProc("GetWindowLongW")
-	pGetSystemMetrics            = user32.NewProc("GetSystemMetrics")
+	pSystemParametersInfoW = user32.NewProc("SystemParametersInfoW")
+	pSetWindowPos          = user32.NewProc("SetWindowPos")
+	pShowWindowAsync       = user32.NewProc("ShowWindowAsync")
 )
-
-type coord struct{ X, Y int16 }
-
-type smallRect struct{ Left, Top, Right, Bottom int16 }
-
-// conInfo is CONSOLE_SCREEN_BUFFER_INFO: all WORD-sized, no padding.
-type conInfo struct {
-	Size      coord
-	Cursor    coord
-	Attr      uint16
-	Window    smallRect
-	MaxWindow coord
-}
 
 type winRect struct{ Left, Top, Right, Bottom int32 }
 
 const (
-	swRestore        = 9
 	swShowNoActivate = 4 // restores a maximized or minimized window without taking focus
 	swpNoZOrder      = 0x0004
 	swpNoActivate    = 0x0010
 	swpAsync         = 0x4000 // NcStudio busy: post the move, do not wait for it
-	wsHScroll        = 0x00100000
-	wsVScroll        = 0x00200000
-	smCxVScroll      = 2
-	smCyHScroll      = 3
 	spiGetWorkArea   = 0x0030
 )
-
-func stdout() uintptr {
-	h, _, _ := pGetStdHandle.Call(uintptr(0xFFFFFFF5)) // STD_OUTPUT_HANDLE
-	return h
-}
-
-func consoleInfo() (conInfo, bool) {
-	var ci conInfo
-	r, _, _ := pGetConsoleScreenBufferInfo.Call(stdout(), uintptr(unsafe.Pointer(&ci)))
-	return ci, r != 0
-}
-
-// startAttr: the console colours before the program, what the '0' mark restores.
-var startAttr = func() uint16 {
-	if ci, ok := consoleInfo(); ok {
-		return ci.Attr
-	}
-	return 0x07
-}()
-
-// curAttr is the colour say writes with now.
-var curAttr = startAttr
-
-// setInk switches the text colour ('A'+c) or the background ('a'+c); '0' goes
-// back to the colours the console had at start.
-func setInk(h uintptr, mark byte) {
-	switch {
-	case mark >= 'A' && mark < 'A'+16:
-		curAttr = curAttr&0xFFF0 | uint16(mark-'A')
-	case mark >= 'a' && mark < 'a'+16:
-		curAttr = curAttr&0xFF0F | uint16(mark-'a')<<4
-	default: // the plain colour: white on the console's own background
-		curAttr = startAttr&0xFFF0 | 0x0F
-	}
-	pSetConsoleTextAttribute.Call(h, uintptr(curAttr))
-}
 
 func workArea() (winRect, bool) {
 	var r winRect
@@ -136,7 +73,7 @@ func findTop(title string) uintptr {
 	topMu.Lock()
 	defer topMu.Unlock()
 	topTitle, topHit = title, 0
-	topSkip, _, _ = pGetConsoleWindow.Call()
+	topSkip = appHwnd()
 	pEnumWindows.Call(topCB, 0)
 	return topHit
 }
@@ -172,7 +109,7 @@ func layoutWindows(title string) {
 		placeNc(h)
 	}
 	half := (wa.Right - wa.Left) / 2
-	placeConsole(winRect{wa.Left + half, wa.Top, wa.Right, wa.Bottom})
+	placeApp(winRect{wa.Left + half, wa.Top, wa.Right, wa.Bottom})
 }
 
 // placeNc moves NcStudio to the left half once per run. It never activates the
@@ -193,76 +130,9 @@ func placeNc(h uintptr) {
 	time.Sleep(300 * time.Millisecond) // let it redraw before keys are typed into it
 }
 
-// placeConsole fits the console into r: the buffer gets the size of the window,
-// so there are no scroll bars and the full-screen frame is the whole buffer.
-func placeConsole(r winRect) {
-	w, _, _ := pGetConsoleWindow.Call()
-	if w == 0 {
-		return
+// placeApp puts the window of this program into r.
+func placeApp(r winRect) {
+	if appPlace != nil {
+		appPlace(int(r.Left), int(r.Top), int(r.Right-r.Left), int(r.Bottom-r.Top))
 	}
-	out := stdout()
-	ci, ok := consoleInfo()
-	if !ok {
-		return
-	}
-	pShowWindow.Call(w, swRestore)
-	time.Sleep(50 * time.Millisecond)
-	// frame and caption: the window rectangle less the client one; both scroll
-	// bars are counted as gone, the buffer will be exactly the window
-	var wr, cr winRect
-	pGetWindowRect.Call(w, uintptr(unsafe.Pointer(&wr)))
-	pGetClientRect.Call(w, uintptr(unsafe.Pointer(&cr)))
-	gwlStyle := int32(-16)
-	style, _, _ := pGetWindowLongW.Call(w, uintptr(gwlStyle))
-	dx := (wr.Right - wr.Left) - (cr.Right - cr.Left)
-	dy := (wr.Bottom - wr.Top) - (cr.Bottom - cr.Top)
-	if style&wsVScroll != 0 {
-		v, _, _ := pGetSystemMetrics.Call(smCxVScroll)
-		dx -= int32(v)
-	}
-	if style&wsHScroll != 0 {
-		v, _, _ := pGetSystemMetrics.Call(smCyHScroll)
-		dy -= int32(v)
-	}
-	// CONSOLE_FONT_INFO: font index, then the cell size in pixels
-	var font struct {
-		N    uint32
-		Size coord
-	}
-	pGetCurrentConsoleFont.Call(out, 0, uintptr(unsafe.Pointer(&font)))
-	fw, fh := int32(font.Size.X), int32(font.Size.Y)
-	if fw <= 0 || fh <= 0 {
-		fw, fh = 8, 12
-	}
-	cols := (r.Right - r.Left - dx) / fw
-	rows := (r.Bottom - r.Top - dy) / fh
-	lg, _, _ := pGetLargestConsoleWindowSize.Call(out)
-	if mx := int32(int16(lg)); mx > 0 && cols > mx {
-		cols = mx
-	}
-	if my := int32(int16(lg >> 16)); my > 0 && rows > my {
-		rows = my
-	}
-	if cols < 40 || rows < 10 {
-		return
-	}
-	bufH := rows
-	// the window must always fit the buffer: shrink it, set the buffer, grow it
-	cw, ch := int32(ci.Window.Right-ci.Window.Left)+1, int32(ci.Window.Bottom-ci.Window.Top)+1
-	if cw > cols {
-		cw = cols
-	}
-	if ch > rows {
-		ch = rows
-	}
-	small := smallRect{0, 0, int16(cw - 1), int16(ch - 1)}
-	pSetConsoleWindowInfo.Call(out, 1, uintptr(unsafe.Pointer(&small)))
-	size := uintptr(uint16(cols)) | uintptr(uint16(bufH))<<16
-	if ok, _, _ := pSetConsoleScreenBufferSize.Call(out, size); ok == 0 {
-		return
-	}
-	win := smallRect{0, 0, int16(cols - 1), int16(rows - 1)}
-	pSetConsoleWindowInfo.Call(out, 1, uintptr(unsafe.Pointer(&win)))
-	pSetWindowPos.Call(w, 0, uintptr(r.Left), uintptr(r.Top), uintptr(cols*fw+dx), uintptr(rows*fh+dy),
-		swpNoZOrder)
 }

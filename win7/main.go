@@ -2,8 +2,8 @@ package main
 
 // pcbscan.exe — height map for PCB milling on a Weihong NcStudio machine with
 // no probe input: an MCU reports bit-to-copper contact, this program types
-// short moves into NcStudio's MDI window. Runs on bare Windows 7, full screen
-// in its console.
+// short moves into NcStudio's MDI window. Runs on bare Windows 7 in its own
+// window, drawn in software: no runtime, no libraries.
 //
 // pluttan
 
@@ -15,7 +15,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -198,6 +197,9 @@ func latin(s string) string {
 }
 
 func exeDir() string {
+	if d := os.Getenv("PCBSCAN_DIR"); d != "" { // tests and demos: another folder
+		return d
+	}
 	p, err := os.Executable()
 	if err != nil {
 		return "."
@@ -207,38 +209,6 @@ func exeDir() string {
 
 // errBack: the operator went back from a list; not an error to show.
 var errBack = errors.New("назад")
-
-func taps(dir string) []string {
-	var out []string
-	for _, pat := range []string{"*.tap", "*.nc", "*.TAP", "*.NC"} {
-		m, _ := filepath.Glob(filepath.Join(dir, pat))
-		for _, f := range m {
-			if !strings.Contains(strings.ToLower(f), "_level.") {
-				out = append(out, f)
-			}
-		}
-	}
-	sort.Strings(out)
-	return uniq(out)
-}
-
-// pickTap: the programs next to the exe in a list; even a single one is shown
-// and taken with Enter, so the operator sees which board is meant.
-func pickTap(dir string) (string, error) {
-	ts := taps(dir)
-	if len(ts) == 0 {
-		return "", fmt.Errorf("рядом с pcbscan.exe нет файлов .tap: положите программу платы в эту папку")
-	}
-	var names []string
-	for _, t := range ts {
-		names = append(names, filepath.Base(t))
-	}
-	i, ok := pick("Программы рядом с pcbscan.exe", names)
-	if !ok {
-		return "", errBack
-	}
-	return ts[i], nil
-}
 
 func uniq(s []string) []string {
 	var out []string
@@ -324,11 +294,6 @@ func status(o opts) Status {
 	return st
 }
 
-var commands = map[string]func(opts) error{
-	"2": cmdWire, "3": cmdNcTest, "4": cmdScan, "5": cmdZero, "6": cmdLevel, "7": cmdManual,
-	"8": cmdFindCoords, "9": cmdSim,
-}
-
 func main() {
 	var o opts
 	flag.StringVar(&o.port, "com", "", "порт МК, например COM5 (по умолчанию ищется сам)")
@@ -351,21 +316,23 @@ func main() {
 		startSim(o)
 	}
 	if err := ValidKeys(o.mdiKey); err != nil {
-		say("ОСТАНОВ: %v\n", err)
+		fatal("ОСТАНОВ: " + err.Error())
+		os.Exit(2)
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			fatal(fmt.Sprintf("pcbscan упал: %v", r))
+			panic(r)
+		}
+	}()
+	if err := startGUI(o); err != nil {
+		fatal("ОСТАНОВ: " + err.Error())
 		os.Exit(2)
 	}
 	if !o.nolayout && !o.sim {
 		layoutWindows(o.title)
 	}
-	ct := term.(*conTerm)
-	ct.start()
-	defer ct.stop()
-	defer func() {
-		if r := recover(); r != nil {
-			ct.stop() // the console back first, or the panic text lands in the frame
-			panic(r)
-		}
-	}()
 	statusFn = func() Status { return statusCached(o) }
 	jobMain(o)
+	app.Disp.Close()
 }

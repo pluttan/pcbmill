@@ -63,6 +63,7 @@ func (n *NcStudio) RapidZ(z float64) error {
 		return err
 	}
 	n.z = z
+	n.track()
 	return nil
 }
 
@@ -75,6 +76,7 @@ func (n *NcStudio) RapidXY(x, y float64) error {
 		return err
 	}
 	n.x, n.y, n.known = x, y, true
+	n.track()
 	return nil
 }
 
@@ -84,6 +86,7 @@ func (n *NcStudio) MoveXYRel(dx, dy float64) error {
 		return err
 	}
 	n.x, n.y = n.x+dx, n.y+dy
+	n.track()
 	return nil
 }
 
@@ -101,8 +104,12 @@ func (n *NcStudio) MoveZ(z, feed float64) error {
 		return err
 	}
 	n.z = z
+	n.track()
 	return nil
 }
+
+// track tells the screens where the tool went.
+func (n *NcStudio) track() { trackTool(n.x, n.y, n.z, n.known) }
 
 func (n *NcStudio) Grab() error { return n.K.Grab() }
 
@@ -110,4 +117,4 @@ func (n *NcStudio) Grab() error { return n.K.Grab() }
 func (n *NcStudio) Load(path string) error { return n.K.Load(path) }
 
 // ResetZ: the operator zeroed Z in NcStudio at the current height.
-func (n *NcStudio) ResetZ() { n.z = 0 }
+func (n *NcStudio) ResetZ() { n.z = 0; n.track() }

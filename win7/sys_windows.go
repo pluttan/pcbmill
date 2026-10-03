@@ -6,12 +6,10 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
-	"unicode/utf16"
 	"unsafe"
 )
 
@@ -20,12 +18,6 @@ var (
 	user32   = syscall.NewLazyDLL("user32.dll")
 	advapi32 = syscall.NewLazyDLL("advapi32.dll")
 
-	pWriteConsoleW      = kernel32.NewProc("WriteConsoleW")
-	pReadConsoleW       = kernel32.NewProc("ReadConsoleW")
-	pReadConsoleInputW  = kernel32.NewProc("ReadConsoleInputW")
-	pFlushConsoleInput  = kernel32.NewProc("FlushConsoleInputBuffer")
-	pGetConsoleWindow   = kernel32.NewProc("GetConsoleWindow")
-	pGetStdHandle       = kernel32.NewProc("GetStdHandle")
 	pGetCommState       = kernel32.NewProc("GetCommState")
 	pSetCommState       = kernel32.NewProc("SetCommState")
 	pSetCommTimeouts    = kernel32.NewProc("SetCommTimeouts")
@@ -53,31 +45,9 @@ var (
 // ===  Console           ===
 // ==========================
 
-// say writes through WriteConsoleW: the Windows 7 console is cp866, UTF-8 bytes would be garbage.
-// Colour marks become console attributes between the pieces.
-func say(f string, a ...interface{}) {
-	s := fmt.Sprintf(f, a...)
-	h := stdout()
-	for i, part := range strings.Split(s, string(esc)) {
-		if i > 0 {
-			if part == "" {
-				continue
-			}
-			setInk(h, part[0])
-			part = part[1:]
-		}
-		u := utf16.Encode([]rune(strings.ReplaceAll(part, "\n", "\r\n")))
-		if len(u) == 0 {
-			continue
-		}
-		var n uint32
-		r, _, _ := pWriteConsoleW.Call(h, uintptr(unsafe.Pointer(&u[0])), uintptr(len(u)), uintptr(unsafe.Pointer(&n)), 0)
-		if r == 0 { // redirected to a file
-			os.Stdout.WriteString(strip(s))
-			return
-		}
-	}
-}
+// say: the exe has no console (a window program); kept for messages before
+// the window exists, they go to stdout when it is redirected.
+func say(f string, a ...interface{}) { fmt.Printf(f, a...) }
 
 // ==========================
 // ===  Serial port       ===
@@ -218,7 +188,7 @@ func sendKey(vk, scan uint16, flags uint32) {
 
 func (k *WinKeys) find() error {
 	var found uintptr
-	self, _, _ := pGetConsoleWindow.Call() // its caption is the exe path, maybe ...\NcStudio\...
+	self := appHwnd() // its caption may hold the word NcStudio too
 	cb := syscall.NewCallback(func(h, _ uintptr) uintptr {
 		if h == self {
 			return 1
@@ -265,21 +235,6 @@ func (k *WinKeys) focus() error {
 		return fmt.Errorf("остановлено: окно NcStudio потеряло фокус (щелчок мышью или другое окно)")
 	}
 	return nil
-}
-
-// backToConsole returns focus to this program after a move, so the next key
-// lands here; keys pressed meanwhile (autorepeat) are dropped.
-func backToConsole() {
-	w, _, _ := pGetConsoleWindow.Call()
-	if fg, _, _ := pGetForeground.Call(); w == 0 || fg == w {
-		return // already here: keep whatever the operator typed ahead
-	}
-	sendKey(vkNames["alt"], 0, 0)
-	sendKey(vkNames["alt"], 0, keyUp)
-	pSetForeground.Call(w)
-	time.Sleep(100 * time.Millisecond)
-	h, _, _ := pGetStdHandle.Call(uintptr(0xFFFFFFF6))
-	pFlushConsoleInput.Call(h)
 }
 
 // Grab brings NcStudio forward at the start of an operation, after the operator answered.

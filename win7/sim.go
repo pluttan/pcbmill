@@ -494,9 +494,9 @@ func (s *simMachine) Faults() []string {
 
 // faultKey is the fault an F key switches, or false.
 // faultKey: digits 1-6 switch the faults, on the screens that let them (faultKeys).
-func faultKey(k Key) (simFault, bool) {
-	if k.Code == KeyRune && k.R >= '1' && int(k.R-'1') < int(fCount) {
-		return simFault(k.R - '1'), true
+func faultKey(r rune) (simFault, bool) {
+	if r >= '1' && int(r-'1') < int(fCount) {
+		return simFault(r - '1'), true
 	}
 	return 0, false
 }

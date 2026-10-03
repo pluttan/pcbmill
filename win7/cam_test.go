@@ -1,9 +1,12 @@
 package main
 
 import (
+	"time"
+
 	"encoding/json"
 	"math"
 	"os"
+	"pcbscan/ui"
 	"sort"
 	"strings"
 	"testing"
@@ -140,70 +143,57 @@ func TestIsoClearance(t *testing.T) {
 	t.Logf("ближе всего к меди %.4f мм (половина реза %.4f), медь слева %d, справа %d", worst, w/2, left, right)
 }
 
-// TestCamForm: the form fits every window, scrolls to the chosen line, the
-// arrows keep values on their steps and in their limits, and the numbers
-// come back from the file next to the exe.
+// TestCamForm: the arrows keep values on their steps and in their limits, a
+// typed number is taken, a wrong one is refused, and the numbers come back
+// from the file next to the exe.
 func TestCamForm(t *testing.T) {
-	for _, sz := range sizes {
-		useTerm(t, sz[0], sz[1])
-		f := &camForm{c: defaultCam()}
-		for i := 0; i < f.count(); i++ {
-			fr := f.view(sz[0], sz[1])
-			if len(fr) != sz[1] {
-				t.Fatalf("%v: %d строк", sz, len(fr))
-			}
-			onScreen(t, "форма", fr, sz[0])
-			all := plainFrame(fr)
-			want := camButtons[0]
-			if i < len(camFields) {
-				want = camFields[i].label
-			} else {
-				want = camButtons[i-len(camFields)]
-			}
-			if !strings.Contains(all, want) {
-				t.Fatalf("%v: выбрано %d, не видно %q\n%s", sz, i, want, all)
-			}
-			f.key(k(KeyDown))
+	run := func(keys ...interface{}) (camCfg, bool) {
+		d := testApp(t)
+		c := defaultCam()
+		f := camNumForm(&c)
+		got := make(chan bool)
+		go func() { got <- editForm(f) }()
+		waitText(t, "Сделать программы")
+		sendKeys(d, keys...)
+		select {
+		case ok := <-got:
+			return c, ok
+		case <-time.After(5 * time.Second):
+			t.Fatal("форма не закрылась")
 		}
+		return c, false
 	}
-	f := &camForm{c: defaultCam()}
-	f.sel = 3 // the depth of isolation
+	down := []interface{}{ui.KeyDown, ui.KeyDown, ui.KeyDown} // to the depth of isolation
+	var left []interface{}
 	for i := 0; i < 50; i++ {
-		f.key(k(KeyLeft))
+		left = append(left, ui.KeyLeft)
 	}
-	if f.c.IsoDepth != camFields[3].lo {
-		t.Errorf("глубина %v, ниже предела", f.c.IsoDepth)
+	c, ok := run(append(append(append([]interface{}{}, down...), left...), ui.KeyEsc)...)
+	if ok || c.IsoDepth != camFields[3].lo {
+		t.Errorf("глубина %v ниже предела, ok %v", c.IsoDepth, ok)
 	}
-	f.key(k(KeyRight))
-	if math.Abs(f.c.IsoDepth-0.03) > 1e-9 {
-		t.Errorf("шаг: %v", f.c.IsoDepth)
+	c, _ = run(append(append(append([]interface{}{}, down...), left...), ui.KeyRight, ui.KeyEsc)...)
+	if math.Abs(c.IsoDepth-0.03) > 1e-9 {
+		t.Errorf("шаг: %v", c.IsoDepth)
 	}
-	for _, x := range keys("0", ",", "1", "2", KeyEnter) {
-		f.key(x)
+	keys := append([]interface{}{}, down...)
+	keys = append(keys, "0,12", ui.KeyEnter, "9", ui.KeyEnter)
+	for i := 3; i < 11; i++ {
+		keys = append(keys, ui.KeyDown)
 	}
-	if f.c.IsoDepth != 0.12 {
-		t.Errorf("ввод 0,12: %v %q", f.c.IsoDepth, f.msg)
+	keys = append(keys, ui.KeyRight, ui.KeyRight, ui.KeyEnter)
+	c, ok = run(keys...)
+	if !ok || c.IsoDepth != 0.12 {
+		t.Errorf("ввод 0,12 и отказ на 9: %v, ok %v", c.IsoDepth, ok)
 	}
-	for _, x := range keys("9", KeyEnter) {
-		f.key(x)
-	}
-	if f.c.IsoDepth != 0.12 || f.msg == "" {
-		t.Errorf("9 мм приняты: %v", f.c.IsoDepth)
-	}
-	f.sel = 11 // the drilling switch
-	f.key(k(KeyRight))
-	f.key(k(KeyRight))
-	if f.c.DrillMode != drillBoth {
-		t.Errorf("сверловка %d", f.c.DrillMode)
+	if c.DrillMode != drillBoth {
+		t.Errorf("сверловка %d", c.DrillMode)
 	}
 	dir := t.TempDir()
-	if err := saveCam(dir, f.c); err != nil {
+	if err := saveCam(dir, c); err != nil {
 		t.Fatal(err)
 	}
-	if got := loadCam(dir); got != f.c {
-		t.Errorf("из файла %+v, а было %+v", got, f.c)
-	}
-	if done, end := f.key(k(KeyEsc)); done || !end {
-		t.Error("Esc")
+	if got := loadCam(dir); got != c {
+		t.Errorf("из файла %+v, а было %+v", got, c)
 	}
 }

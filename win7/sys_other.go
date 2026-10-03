@@ -8,18 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 )
 
-// say drops the colour marks; PCBSCAN_ANSI=1 shows them as terminal colours.
-func say(f string, a ...interface{}) {
-	s := fmt.Sprintf(f, a...)
-	if os.Getenv("PCBSCAN_ANSI") == "" {
-		fmt.Print(strip(s))
-		return
-	}
-	fmt.Print(ansiOf(s))
-}
+func say(f string, a ...interface{}) { fmt.Printf(f, a...) }
 
 func layoutWindows(string) {}
 
@@ -42,8 +33,6 @@ func (k *WinKeys) Line(string) error { return errors.New("только Windows")
 func (k *WinKeys) Load(string) error { return errors.New("только Windows") }
 
 func ValidKeys(string) error { return nil }
-
-func backToConsole() {}
 
 type WinInfo struct {
 	H                      uintptr

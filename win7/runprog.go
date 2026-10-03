@@ -7,12 +7,32 @@ package main
 
 import (
 	"fmt"
+
 	"math"
 	"os"
 	"path/filepath"
+	"pcbscan/ui"
 	"strings"
 	"time"
 )
+
+// progPaths: the paths of a program for the 3D view.
+func progPaths(lines []string) []cpath {
+	op, err := readProg(lines)
+	if err != nil {
+		return nil
+	}
+	return op.paths
+}
+
+// progStage: the digit of the stage a program belongs to ("1" .. "4").
+func progStage(file string) string {
+	b := strings.TrimPrefix(filepath.Base(file), "sheet_")
+	if b == "" {
+		return ""
+	}
+	return b[:1]
+}
 
 // toolOf: what a program of the job wants in the spindle, by its name.
 func toolOf(file string, c camCfg) string {
@@ -96,7 +116,6 @@ func runProg(o opts, j *Job, c camCfg, file, stage string) (bool, error) {
 	z := j.zero()
 	corner := fmt.Sprintf("♦ X%s Y%s (угол листа)", num(z.X), num(z.Y))
 	needZero := had != tool
-	curHead = title
 	newPage(title)
 	if needZero {
 		was := "неизвестно (после карты высот Z0 ставится заново)"
@@ -157,40 +176,37 @@ func runProg(o opts, j *Job, c camCfg, file, stage string) (bool, error) {
 		return false, nil
 	}
 	p := newPage(title, about[:3]...)
+	sc := newSheetScene(j, c.Side == sideBottom, sheetOverlay{paths: progPaths(lines), stage: progStage(file)})
+	sc.tool = true
+	p.set(func() { p.head = "Открываю в NcStudio"; p.scene = sc })
 	nc := newNc(o)
 	sayHint("открываю " + filepath.Base(dst) + " в NcStudio (Ctrl+O)...")
 	loaded := true
+	machineBusy(true)
 	if err := nc.Load(dst); err != nil {
 		loaded = false
 		sayWarn(err.Error())
 	}
-	backToConsole()
-	todo := "Файл открыт в NcStudio. Запустите его там: F9."
+	machineBusy(false)
+	backToApp()
+	todo := "► Файл открыт в NcStudio. Запустите его там: F9."
 	if !loaded {
-		todo = "Откройте в NcStudio сами (Файл, Открыть): " + dst + " и запустите F9."
+		todo = "▲ Откройте в NcStudio сами (Файл, Открыть): " + dst + " и запустите F9."
 	}
 	start := time.Now()
 	p.set(func() {
 		p.head = "Станок работает"
 		p.info = append(append([]string(nil), about[:3]...), "", todo,
-			"Когда станок закончит и поднимет фрезу - Enter здесь.")
-		p.keys = []string{"Enter", "станок закончил", "Esc", "не закончено"}
+			"Когда станок закончит и поднимет фрезу - кнопка ниже.")
 	})
 	done := false
-	run(p.view, func(k Key) bool {
-		switch k.Code {
-		case KeyEnter:
-			if confirm("Станок закончил " + filepath.Base(dst) + "?") {
-				done = true
-				return true
-			}
-		case KeyEsc, KeyCtrlC:
-			return true
+	for !done {
+		id := p.ask(pageBtn{id: "done", label: "Станок закончил", kind: ui.BtnSuccess, key: ui.KeyEnter},
+			pageBtn{id: "back", label: "Не закончено", kind: ui.BtnNormal, key: ui.KeyEsc})
+		if id != "done" {
+			return false, nil
 		}
-		return false
-	}, time.Second)
-	if !done {
-		return false, nil
+		done = confirm("Станок закончил " + filepath.Base(dst) + "?")
 	}
 	j.mark(strings.TrimSuffix(filepath.Base(file), ".tap"))
 	if err := j.save(); err != nil {

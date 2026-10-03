@@ -6,6 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"pcbscan/ui"
 )
 
 // testJob: two kinds of boards, three pieces, on a sheet in a temp folder.
@@ -280,20 +283,29 @@ func TestRedo(t *testing.T) {
 // TestAskYes: only the word yes says yes; the Russian layout gets a hint.
 func TestAskYes(t *testing.T) {
 	for _, c := range []struct {
-		keys []Key
+		keys []interface{}
 		want bool
 	}{
-		{keys("y", "e", "s", KeyEnter), true},
-		{keys("Y", "E", "S", KeyEnter), true},
-		{keys("y", KeyEnter), false},
-		{keys(KeyEnter, "y", "e", "s", KeyEnter), true}, // empty: asked again
-		{keys("н", "у", "ы", KeyEnter, "y", "e", "s", KeyEnter), true},
-		{keys("y", "e", "s", KeyEsc), false},
-		{keys("д", "а", KeyEnter), false},
+		{[]interface{}{"yes", ui.KeyEnter}, true},
+		{[]interface{}{"YES", ui.KeyEnter}, true},
+		{[]interface{}{"y", ui.KeyEnter}, false},
+		{[]interface{}{ui.KeyEnter, "yes", ui.KeyEnter}, true}, // empty: asked again
+		{[]interface{}{"нуы", ui.KeyEnter, "yes", ui.KeyEnter}, true},
+		{[]interface{}{"yes", ui.KeyEsc}, false},
+		{[]interface{}{"да", ui.KeyEnter}, false},
 	} {
-		useTerm(t, 80, 25, c.keys...)
-		if got := askYes("Открыть?", "строка"); got != c.want {
-			t.Errorf("%v: %v", c.keys, got)
+		d := testApp(t)
+		got := make(chan bool)
+		go func() { got <- askYes("Открыть?", "строка") }()
+		waitText(t, "Напечатайте yes")
+		sendKeys(d, c.keys...)
+		select {
+		case g := <-got:
+			if g != c.want {
+				t.Errorf("%v: %v", c.keys, g)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%v: нет ответа", c.keys)
 		}
 	}
 }

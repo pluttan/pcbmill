@@ -1,38 +1,37 @@
 package main
 
-// The menu commands but the scan and the manual mode: each runs on its own
-// work page, asks in dialogs, and leaves the page on screen until Enter.
+// The service commands: the wire check, the NcStudio check, one touch for
+// Z0, the search for the coordinates in the NcStudio windows. Each runs on
+// its own page, asks in dialogs and leaves the page until Готово.
 
 import (
 	"fmt"
+	"image"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
+
+	"pcbscan/gfx"
+	"pcbscan/ui"
 )
 
-// spaced writes a word with spaces between the letters: big text for the wire check.
-func spaced(s string) string { return strings.Join(strings.Split(s, ""), " ") }
-
-// wireBig is the large contact indicator: a block of colour with the word in
-// it, the count of touches under it.
-func wireBig(touching bool, hits int, since string, w int) []string {
-	bw := w
-	if bw > 44 {
-		bw = 44
+// wireBig: the large contact indicator with the count of touches.
+func wireBig(touching bool, hits int, since string) func(c *ui.Ctx, r image.Rectangle) {
+	return func(c *ui.Ctx, r image.Rectangle) {
+		t := c.T
+		h := imin(r.Dy(), t.Si(220))
+		box := image.Rect(r.Min.X, r.Min.Y, r.Max.X, r.Min.Y+h)
+		col, word, ic := t.Green, "разомкнуто", ui.IconRing
+		if touching {
+			col, word, ic = t.Yellow, "КОНТАКТ", ui.IconZero
+		}
+		c.C.FillRoundRect(float64(box.Min.X), float64(box.Min.Y), float64(box.Dx()), float64(box.Dy()), t.S(14), gfx.Alpha(col, 0.14))
+		c.C.StrokeRoundRect(float64(box.Min.X)+0.5, float64(box.Min.Y)+0.5, float64(box.Dx())-1, float64(box.Dy())-1, t.S(14), t.S(2), gfx.Alpha(col, 0.7))
+		c.Icon(ic, image.Rect(box.Min.X+box.Dx()/2-t.Si(28), box.Min.Y+t.Si(26), box.Min.X+box.Dx()/2+t.Si(28), box.Min.Y+t.Si(82)), col)
+		c.LabelIn(image.Rect(box.Min.X, box.Min.Y+t.Si(96), box.Max.X, box.Min.Y+t.Si(140)), word, ui.Style{Kind: ui.Bold, Size: ui.SizeHuge, Color: col}, 1)
+		c.LabelIn(image.Rect(box.Min.X, box.Min.Y+t.Si(150), box.Max.X, box.Min.Y+t.Si(180)),
+			fmt.Sprintf("касаний %d   последнее изменение %s", hits, since), c.Muted(), 1)
 	}
-	word, fg, bg := "○   "+spaced("разомкнуто")+"   ○", cBlack, cLightGreen
-	if touching {
-		word, bg = "♦   "+spaced("КОНТАКТ")+"   ♦", cYellow
-	}
-	tile := func(s string) string { return center(s, bw) }
-	if touching { // contact: the dark bar, the one mark of the screen
-		tile = func(s string) string { return on(cWhite, cDark, center(s, bw)) }
-	}
-	_, _ = fg, bg
-	return []string{tile(""), tile(word), tile(""), "",
-		center(paint(cHint, "касаний ")+paint(cTitle, fmt.Sprintf("%-4d", hits))+
-			paint(cHint, "   последнее изменение ")+paint(cTitle, since), bw)}
 }
 
 func cmdWire(o opts) error {
@@ -42,14 +41,14 @@ func cmdWire(o opts) error {
 		return err
 	}
 	p.set(func() {
-		p.head = "Как проверять"
-		p.info = []string{mcuAt(name) + ". Касайтесь зажимом фрезы: здесь должно " +
-			"загораться КОНТАКТ. Станок не двигается."}
-		p.keys = []string{"Esc", "в меню"}
+		p.head = "Проверка провода"
+		p.info = []string{mcuAt(name) + ". Касайтесь зажимом фрезы: здесь должно загораться КОНТАКТ. Станок не двигается."}
+		p.btns = []pageBtn{{id: "ok", label: "Готово", kind: ui.BtnPrimary, key: ui.KeyEnter}}
 	})
-	backToConsole()
+	backToApp()
 	defer faultKeysOn(func() bool { return true })()
 	last, since, start := !m.State(), "-", m.Hits()
+	p.drain()
 	for {
 		if e := m.Alive(); e != nil {
 			return e
@@ -58,45 +57,57 @@ func cmdWire(o opts) error {
 			last = s
 			since = time.Now().Format("15:04:05")
 			if s {
-				logLine(paint(cHint, since) + "  " + paint(cTouch, "♦ КОНТАКТ"))
+				logLine("♦ " + since + "  КОНТАКТ")
 			} else {
-				logLine(paint(cHint, since) + "  " + paint(cOK, "○ разомкнуто"))
+				logLine(since + "  разомкнуто")
 			}
 		}
-		w, _ := term.Size()
-		p.set(func() { p.big = wireBig(last, m.Hits()-start, since, colW(w)) })
-		if k, ok := term.Key(40 * time.Millisecond); ok {
-			if k.Code == KeyEsc || k.Code == KeyEnter || k.Code == KeyCtrlC || k.letter() == 'q' {
-				return nil
+		touching, hits, at := last, m.Hits()-start, since
+		p.set(func() {
+			p.extra = func(c *ui.Ctx, r image.Rectangle) int {
+				wireBig(touching, hits, at)(c, r)
+				return imin(r.Dy(), c.T.Si(232))
 			}
+		})
+		if _, ok := p.pressed(); ok {
+			return nil
 		}
+		time.Sleep(40 * time.Millisecond)
 	}
 }
 
 func cmdNcTest(o opts) error {
 	p := newPage(menuTitle("3"),
-		"Фреза не ниже 5 мм над заготовкой. Программа нажмёт в NcStudio "+paint(cKey, o.mdiKey)+" и введёт",
-		"  "+paint(cTitle, "G91 G00 Z1")+"   вверх на 1 мм, потом",
-		"  "+paint(cTitle, "G91 G00 Z-1")+"  обратно.",
-		sep,
-		paint(cHint, "Пока она печатает, мышь и клавиатуру не трогать."))
+		"Фреза не ниже 5 мм над заготовкой. Программа нажмёт в NcStudio "+o.mdiKey+" и введёт",
+		"G91 G00 Z1 - вверх на 1 мм, потом G91 G00 Z-1 - обратно.",
+		"",
+		"Пока она печатает, мышь и клавиатуру не трогать.")
+	p.set(func() { p.head = "Проверка связи с NcStudio"; p.scene = toolScene() })
 	if !confirm("Начать проверку связи?") {
 		return nil
 	}
 	n := newNc(o)
+	machineBusy(true)
 	if err := n.Grab(); err != nil {
+		machineBusy(false)
 		return err
 	}
 	sayHint("G91 G00 Z1")
-	if err := n.RapidZ(1); err != nil {
+	err := n.RapidZ(1)
+	machineBusy(false)
+	if err != nil {
 		return err
 	}
 	up := confirm("Z поднялся на 1 мм?")
+	machineBusy(true)
 	if err := n.Grab(); err != nil {
+		machineBusy(false)
 		return err
 	}
 	sayHint("G91 G00 Z-1")
-	if err := n.RapidZ(0); err != nil {
+	err = n.RapidZ(0)
+	machineBusy(false)
+	if err != nil {
 		return err
 	}
 	down := confirm("Z вернулся вниз?")
@@ -110,47 +121,8 @@ func cmdNcTest(o opts) error {
 	return nil
 }
 
-func gridFor(tap string, step float64) (Grid, error) {
-	lines, err := readLines(tap)
-	if err != nil {
-		return Grid{}, err
-	}
-	x0, x1, y0, y1, err := CutBounds(lines)
-	if err != nil {
-		return Grid{}, err
-	}
-	return GridFor(x0, x1, y0, y1, step), nil
-}
-
-func cmdZero(o opts) error {
-	// Z0 goes where the map has its zero: the first point of scan.csv, whatever grid it used
-	var first [2]float64
-	from := "первая точка карты, scan.csv"
-	if rows, e := LoadPoints(filepath.Join(exeDir(), "scan.csv")); e == nil && len(rows) > 0 {
-		first = [2]float64{rows[0].X, rows[0].Y}
-	} else {
-		tap, err := pickTap(exeDir())
-		if err != nil {
-			return err
-		}
-		g, err := gridFor(tap, o.grid)
-		if err != nil {
-			return err
-		}
-		first = g.Points()[0]
-		from = "scan.csv нет, первая точка сетки по программе"
-	}
-	if err := zeroAt(o, menuTitle("5"), first, from); err != nil {
-		return err
-	}
-	sayOK("Z0 стоит на меди в первой точке карты. Теперь пункт 6 и запуск *_level.tap.")
-	cur.wait()
-	return nil
-}
-
 // zeroAt: one slow touch of the copper at the point, then the operator zeroes
-// Z in NcStudio there and the tool goes up. False and no error: the operator
-// said no.
+// Z in NcStudio there and the tool goes up. errBack: the operator said no.
 func zeroAt(o opts, title string, at [2]float64, why string) error {
 	p := newPage(title, "Ищу МК на COM-портах...")
 	m, _, err := findTouch(o.port)
@@ -164,11 +136,14 @@ func zeroAt(o opts, title string, at [2]float64, why string) error {
 				fmt.Sprintf("♦ X%.2f Y%.2f", at[0], at[1]) + " (" + why + "),",
 			"потом нужно обнулить Z в NcStudio.",
 		}
+		p.scene = jobToolScene()
 	})
 	if !confirm("Начать касание?") {
 		return errBack
 	}
 	nc := newNc(o)
+	machineBusy(true)
+	defer machineBusy(false)
 	if err := nc.Grab(); err != nil {
 		return err
 	}
@@ -181,81 +156,21 @@ func zeroAt(o opts, title string, at [2]float64, why string) error {
 	if err := nc.MoveZ(z, 20); err != nil {
 		return err
 	}
+	setCopperZ(z)
+	machineBusy(false)
 	logLine("♦ КОНТАКТ: фреза касается меди.")
-	message("Обнулите Z", "Фреза касается меди.", "Обнулите Z в NcStudio (рабочая система координат),",
-		"затем Enter здесь.")
+	message("Обнулите Z", "Фреза касается меди.", "Обнулите Z в NcStudio (рабочая система координат), затем OK здесь.")
 	if simM != nil {
 		simM.ZeroZ() // what the operator does in NcStudio
 		logLine("эмуляция: Z обнулён в NcStudio на этой высоте")
 	}
 	nc.ResetZ()
+	setCopperZ(0)
+	machineBusy(true)
 	if err := nc.Grab(); err != nil {
 		return err
 	}
 	return nc.RapidZ(o.clear * 3)
-}
-
-func cmdLevel(o opts) error {
-	pts, err := LoadPoints(filepath.Join(exeDir(), "scan.csv"))
-	if err != nil {
-		return fmt.Errorf("нет scan.csv: сначала снимите карту (%v)", err)
-	}
-	hm, err := MapFromPoints(pts)
-	if err != nil {
-		return err
-	}
-	tap, err := pickTap(exeDir())
-	if err != nil {
-		return err
-	}
-	lines, err := readLines(tap)
-	if err != nil {
-		return err
-	}
-	out, err := ApplyMap(lines, hm, 1.0)
-	if err != nil {
-		return err
-	}
-	dst := strings.TrimSuffix(tap, filepath.Ext(tap)) + "_level" + filepath.Ext(tap)
-	if err := os.WriteFile(dst, []byte(strings.Join(out, "\r\n")+"\r\n"), 0644); err != nil {
-		return err
-	}
-	var cut *rect
-	if x0, x1, y0, y1, e := CutBounds(lines); e == nil {
-		cut = &rect{x0, x1, y0, y1}
-	}
-	mapResult(menuTitle("6"), hm, cut, []string{
-		paint(cOK, "√ Готово: "+filepath.Base(dst)),
-		"Запускать в NcStudio этот файл, ноль Z ставить пунктом 5.",
-	})
-	return nil
-}
-
-// mapResult shows a height map with lines above it; Tab switches between the
-// picture and the table of numbers.
-func mapResult(title string, hm *HeightMap, cut *rect, info []string) {
-	table := false
-	p := &page{title: title, head: "Итог", info: info, nolog: true}
-	curHead = title
-	p.pic = func(w, h int) []string {
-		if table {
-			t := heightTable(hm, colW(w))
-			if len(t) > h {
-				t = append(t[:h-1], paint(cHint, "... окно мало для всей таблицы"))
-			}
-			return t
-		}
-		return fitRows(h, func(r int) []string { return heightViewRows(hm, cut, w, r) })
-	}
-	p.keys = []string{"Tab", "картинка / таблица", "Enter", "в меню", "Esc", "в меню"}
-	cur = p
-	run(p.view, func(k Key) bool {
-		if k.Code == KeyTab {
-			table = !table
-			return false
-		}
-		return k.Code == KeyEnter || k.Code == KeyEsc || k.Code == KeyCtrlC
-	}, 500*time.Millisecond)
 }
 
 // ncWindows lists the controls of NcStudio; the emulation has its own.
@@ -267,7 +182,8 @@ func cmdFindCoords(o opts) error {
 	p := newPage(menuTitle("8"),
 		"Программа ищет, откуда можно читать координаты NcStudio.",
 		"Станок сдвинется: Z вверх на 1 мм, X на +1, Y на +1, и вернётся обратно.",
-		paint(cHint, "Фреза должна быть поднята над платой, шпиндель стоять."))
+		"Фреза должна быть поднята над платой, шпиндель стоять.")
+	p.set(func() { p.head = "Координаты NcStudio"; p.scene = toolScene() })
 	if !confirm("Начать поиск координат?") {
 		return nil
 	}
@@ -296,7 +212,9 @@ func cmdFindCoords(o opts) error {
 		return err
 	}
 	nc := newNc(o)
+	machineBusy(true)
 	if err := nc.Grab(); err != nil {
+		machineBusy(false)
 		return err
 	}
 	found := 0
@@ -304,11 +222,13 @@ func cmdFindCoords(o opts) error {
 	for _, ax := range []string{"Z", "X", "Y"} {
 		sayHint("G91 G00 " + ax + "1")
 		if err := nc.cmd("G91 G00 "+ax+"1", 1.0); err != nil {
+			machineBusy(false)
 			return err
 		}
 		time.Sleep(500 * time.Millisecond) // the display refreshes after the move
 		now, err := snap(ax + " +1 мм")
 		if err != nil {
+			machineBusy(false)
 			return err
 		}
 		for h, w := range now {
@@ -326,6 +246,7 @@ func cmdFindCoords(o opts) error {
 		nc.cmd("G91 G00 X-1 Y-1", 1.0)
 		nc.cmd("G91 G00 Z-1", 1.0)
 	}
+	machineBusy(false)
 	if found == 0 {
 		sayWarn("ни один текст не изменился: NcStudio рисует цифры картинкой, читать придётся с экрана.")
 	} else {
@@ -334,4 +255,36 @@ func cmdFindCoords(o opts) error {
 	logLine(fmt.Sprintf("Всё записано в %s, пришлите этот файл.", out))
 	p.wait()
 	return nil
+}
+
+// toolScene: the sheet of the job with the tool on it, for the pages that
+// move the machine outside the job.
+func toolScene() ui.Scene { return jobToolScene() }
+
+func jobToolScene() ui.Scene {
+	j := newJob("")
+	mirror := false
+	if theJob != nil {
+		j, mirror = theJob.j, theJob.mirror()
+	}
+	s := newSheetScene(j, mirror, sheetOverlay{})
+	s.tool = true
+	return s
+}
+
+// menuTitle: the heading of a service page.
+func menuTitle(k string) string {
+	switch k {
+	case "2":
+		return "сервис / Проверить провод"
+	case "3":
+		return "сервис / Связь с NcStudio"
+	case "7":
+		return "сервис / Ручной режим"
+	case "8":
+		return "сервис / Координаты NcStudio"
+	case "9":
+		return "сервис / Эмуляция"
+	}
+	return "сервис"
 }

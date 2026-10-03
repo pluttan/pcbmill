@@ -1,90 +1,65 @@
 package main
 
-// Menu item 3: the program, the grid form, the scan with the table filling in
-// point by point, and the height map at the end.
+// The scan of the height map: the sheet in 3D with the tool going from
+// point to point, every measured point coloured by its height, the time left;
+// the map in MATLAB's way at the end.
 
 import (
 	"fmt"
+	"image"
 	"math"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
+
+	"pcbscan/ui"
 )
 
 // secondsPerPoint: about 8 MDI commands of about 1.1 s each with the predicted approach.
 const secondsPerPoint = 9.0
 
 // escStop passes the moves on, but before the travel to the next point (the
-// tip is at travel height then) an Esc in the console stops the scan. Esc only
-// gets here when the console has the focus, and taking the focus from
-// NcStudio stops the scan anyway; this is the gentle way between points.
-type escStop struct{ Machine }
+// tip is at travel height then) the Стоп button of the page stops the scan.
+// A click on the page does not take the focus from NcStudio (the window is
+// in no-activate mode while the machine works), so the button is safe.
+type escStop struct {
+	Machine
+	p *page
+}
 
 func (e escStop) RapidXY(x, y float64) error {
-	for {
-		k, ok := term.Key(0)
-		if !ok {
-			break
-		}
-		if k.Code == KeyEsc || k.Code == KeyCtrlC {
-			return fail("остановлено клавишей Esc в окне pcbscan")
+	if e.p != nil {
+		if id, ok := e.p.pressed(); ok && id == "stop" {
+			return fail("остановлено кнопкой Стоп в окне pcbscan")
 		}
 	}
 	return e.Machine.RapidXY(x, y)
 }
 
-// scanInfo: the progress lines over the picture: the bar with its percent,
-// the count and the time left, then what is being done.
-func scanInfo(done, all int, start time.Time, last, phase string) []string {
-	left := paint(cHint, "считаю время")
+// scanText: the progress under the bar: how many, the time left.
+func scanText(done, all int, start time.Time) string {
+	left := "считаю время"
 	if done > 0 && done < all {
 		rest := time.Since(start) / time.Duration(done) * time.Duration(all-done)
-		left = paint(cHint, "осталось ~") + val(fmt.Sprintf("%.0f", math.Ceil(rest.Minutes())), "мин")
+		left = fmt.Sprintf("осталось ~%.0f мин", math.Ceil(rest.Minutes()))
 	}
 	if done >= all {
-		left = paint(cOK, "все точки сняты")
+		left = "все точки сняты"
 	}
-	out := []string{bar(done, all, 24) + "   " + val(fmt.Sprint(done), "") + paint(cHint, fmt.Sprintf(" из %d", all)) + "   " + left}
-	if phase != "" {
-		out = append(out, paint(cKey, phase))
-	}
-	if last != "" {
-		out = append(out, paint(cHint, "последняя ")+last)
-	}
-	return out
+	return fmt.Sprintf("%d из %d   %s", done, all, left)
 }
 
-func cmdScan(o opts) error {
-	tap, err := pickTap(exeDir())
-	if err != nil {
-		return err
-	}
-	g, err := gridFor(tap, o.grid)
-	if err != nil {
-		return err
-	}
-	cut := rect{g.X0, g.X1, g.Y0, g.Y1}
-	g, ok := editGrid(g)
-	if !ok {
-		return nil
-	}
-	_, err = scanRun(o, menuTitle("4"), g.Points(), filepath.Join(exeDir(), "scan.csv"), &cut,
-		func(w, r int) []string { return gridViewRows(g, &cut, w, r) },
-		func(done []Point, blink bool, w, r int) []string { return scanView(g, &cut, done, blink, w, r) })
-	return err
-}
-
-// scanRun: the scan of pts (the first is where Z is zeroed) into out, with
-// before the picture of the points and during the picture of the progress;
-// the height map at the end, nil when the operator said no.
-func scanRun(o opts, title string, pts [][2]float64, out string, cut *rect,
-	before func(w, rows int) []string, during func(done []Point, blink bool, w, rows int) []string) (*HeightMap, error) {
+// scanRun: the scan of pts (the first is where Z is zeroed) into out; the
+// height map at the end, nil when the operator said no.
+func scanRun(o opts, title string, pts [][2]float64, out string, j *Job, mirror bool) (*HeightMap, error) {
 	p := newPage(title, "Ищу МК на COM-портах...")
 	m, name, err := findTouch(o.port)
 	if err != nil {
 		return nil, err
 	}
+	sc := newSheetScene(j, mirror, sheetOverlay{points: pts})
+	sc.tool = true
 	p.set(func() {
 		p.head = "Перед обходом"
 		p.info = []string{
@@ -92,10 +67,10 @@ func scanRun(o opts, title string, pts [][2]float64, out string, cut *rect,
 			"В NcStudio ноль X0 Y0 стоит в углу листа, шпиндель выключен,",
 			fmt.Sprintf("фреза (любая крепкая) на 1-2 мм над медью у первой точки ♦ X%.1f Y%.1f.", pts[0][0], pts[0][1]),
 			fmt.Sprintf("Не выше 2 мм: в первой точке медь ищется на %.0f мм вниз от старта.", o.search),
-			sep,
+			"",
 			"▲ Сейчас ОБНУЛИТЕ Z в NcStudio на этой высоте: обход ведёт Z абсолютными командами от этого нуля.",
 		}
-		p.pic = func(w, h int) []string { return fitRows(h, func(r int) []string { return before(w, r) }) }
+		p.scene = sc
 	})
 	if !confirm("Z обнулён, начать обход?") {
 		return nil, nil
@@ -112,29 +87,25 @@ func scanRun(o opts, title string, pts [][2]float64, out string, cut *rect,
 	fmt.Fprintf(f, "# x,y,z  pcbscan, Z от высоты старта\n")
 	nc := newNc(o)
 	nc.Abs = true
+	machineBusy(true)
+	defer machineBusy(false)
 	if err := nc.Grab(); err != nil {
 		return nil, err
 	}
-	sc := newScanner(o, escStop{nc}, m)
-	sc.Predict = true // nc.Abs above
-	var done []Point
-	start, last, phase, blink := time.Now(), "", "", false
-	refresh := func() { p.info = scanInfo(len(done), len(pts), start, last, phase) }
+	s := newScanner(o, escStop{nc, p}, m)
+	s.Predict = true // nc.Abs above
+	start := time.Now()
 	p.set(func() {
-		refresh()
-		p.nolog, p.head = true, "Обход"
-		p.keys = []string{"Esc", "стоп между точками", "щелчок по другому окну", "стоп сразу"}
-		if simM != nil { // the virtual NcStudio has no window to lose the focus
-			p.keys = p.keys[:2]
-		}
-		p.pic = func(w, h int) []string {
-			return fitRows(h, func(r int) []string { return during(done, blink, w, r) })
-		}
+		p.head, p.info = "Обход", []string{"Мышь и клавиатуру не трогать: pcbscan печатает в NcStudio.",
+			"Стоп останавливает между точками, фреза поднята. Щелчок по другому окну - сразу."}
+		p.progress, p.progText = 0, scanText(0, len(pts), start)
+		p.btns = []pageBtn{{id: "stop", label: "Стоп", kind: ui.BtnDanger}}
 	})
-	sc.Log = func(l string) { p.set(func() { last = l; p.log = append(p.log, l); refresh() }) }
+	p.drain()
+	s.Log = func(l string) { logLine(l) }
 	stopTick, ticked := make(chan bool), make(chan bool)
-	go func() { // blink and the clock while the main goroutine waits for NcStudio
-		t := time.NewTicker(500 * time.Millisecond)
+	go func() { // the clock while the work goroutine waits for NcStudio
+		t := time.NewTicker(time.Second)
 		defer t.Stop()
 		defer close(ticked)
 		for {
@@ -142,22 +113,31 @@ func scanRun(o opts, title string, pts [][2]float64, out string, cut *rect,
 			case <-stopTick:
 				return
 			case <-t.C:
-				p.set(func() { blink = !blink; refresh() })
+				p.set(func() { p.progText = scanText(len(sc.done), len(pts), start) })
 			}
 		}
 	}()
 	var once sync.Once
-	stop := func() { once.Do(func() { close(stopTick); <-ticked }) } // before any dialog
+	stop := func() { once.Do(func() { close(stopTick); <-ticked }) }
 	defer stop()
 	stopFaults := faultKeysOn(func() bool { return true })
 	defer stopFaults()
-	rows, err := sc.Grid(pts, func(pt Point) {
+	rows, err := s.Grid(pts, func(pt Point) {
 		fmt.Fprintf(f, "%.3f,%.3f,%.4f\n", pt.X, pt.Y, pt.Z)
 		f.Sync()
-		p.set(func() { done = append(done, pt); refresh() })
+		if len(sc.done) == 0 {
+			setCopperZ(pt.Z)
+		}
+		p.set(func() {
+			sc.done = append(sc.done, pt)
+			p.progress = float64(len(sc.done)) / float64(len(pts))
+			p.progText = scanText(len(sc.done), len(pts), start)
+		})
 	})
 	stop()
+	p.buttons()
 	if err != nil {
+		machineBusy(false)
 		sayStop(err)
 		if confirm(fmt.Sprintf("Поднять фрезу на %.1f мм?", o.clear), "NcStudio снова получит фокус.") && nc.Grab() == nil {
 			nc.RapidZ(nc.z + o.clear)
@@ -165,13 +145,13 @@ func scanRun(o opts, title string, pts [][2]float64, out string, cut *rect,
 		return nil, fmt.Errorf("карта не досняна: %v. В %s измеренные точки", err, filepath.Base(out))
 	}
 	p.set(func() {
-		phase = "Повторное касание первой точки: насколько всё уехало за время обхода..."
-		refresh()
+		p.progText = "Повторное касание первой точки: насколько всё уехало за время обхода..."
 	})
-	drift, err := sc.Recheck(rows)
+	drift, err := s.Recheck(rows)
 	if err != nil {
 		return nil, fmt.Errorf("повторное касание не удалось, карте верить нельзя: %v", err)
 	}
+	machineBusy(false)
 	fmt.Fprintf(f, "# повторное касание первой точки: сдвиг %+.4f мм\n", drift)
 	hm, _ := MapFromPoints(rows)
 	info := []string{fmt.Sprintf("Сдвиг первой точки за обход: %+.3f мм", drift)}
@@ -182,9 +162,42 @@ func scanRun(o opts, title string, pts [][2]float64, out string, cut *rect,
 		info = append(info, "√ Сдвиг в норме, карте можно верить.")
 	}
 	info = append(info, "√ Карта записана: "+filepath.Base(out))
-	mapResult(title+": готово", hm, cut, info)
+	mapResult(title+": готово", hm, rows, j, mirror, info)
 	if math.Abs(drift) > 0.03 {
 		return nil, fmt.Errorf("сдвиг первой точки %+.3f мм: карта не годится, снимите заново", drift)
 	}
 	return hm, nil
+}
+
+// mapResult shows a height map: the surface in 3D and, on a button, the
+// table of numbers.
+func mapResult(title string, hm *HeightMap, pts []Point, j *Job, mirror bool, info []string) {
+	p := newPage(title)
+	ms := newMapScene(hm, pts, j, mirror)
+	info = append(append([]string(nil), info...), "",
+		fmt.Sprintf("Точек %d, сетка %d x %d.", len(pts), len(hm.xs), len(hm.ys)),
+		fmt.Sprintf("Медь от %+.3f до %+.3f мм от первой точки, перепад %.3f мм.", ms.lo, ms.hi, ms.hi-ms.lo),
+		"Левая кнопка мыши вращает, правая двигает, колесо приближает.")
+	table := false
+	p.set(func() {
+		p.head, p.info, p.nolog, p.scene = "Карта высот", info, true, ms
+		p.extra = func(c *ui.Ctx, r image.Rectangle) int {
+			if !table {
+				return 0
+			}
+			return drawHeightTable(c, r, hm)
+		}
+	})
+	for {
+		label := "Таблица чисел"
+		if table {
+			label = "Скрыть таблицу"
+		}
+		id := p.ask(pageBtn{id: "table", label: label, kind: ui.BtnNormal, key: ui.KeyTab},
+			pageBtn{id: "ok", label: "Готово", kind: ui.BtnPrimary, key: ui.KeyEnter})
+		if id != "table" {
+			return
+		}
+		p.set(func() { table = !table })
+	}
 }

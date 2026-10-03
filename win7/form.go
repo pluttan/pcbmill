@@ -1,27 +1,33 @@
 package main
 
-// A form of numbers: fields walked with the arrows, Left/Right change a value
-// by its step, Enter or a digit types a number in, a switch turns by Left/Right.
-// A picture beside it follows every change.
+// A form of numbers: a field per number with − and + that change it by its
+// step, a number can be typed in; a switch is a row of choices. The 3D view
+// beside it follows every change. Up and Down walk the fields, Left and
+// Right step the value, Enter on a field takes the typed number.
 
 import (
 	"fmt"
+	"image"
 	"math"
 	"strconv"
 	"strings"
-	"time"
+
+	"pcbscan/gfx"
+	"pcbscan/ui"
 )
 
 type formField struct {
 	label, unit  string
+	group        string // a heading over the field when it changes
 	lo, hi, step float64
 	digits       int
 	choices      []string
 	get          func() float64
 	set          func(float64)
+	show         func(v float64) string // a word for a special value ("та же V")
 }
 
-func (f formField) show() string {
+func (f formField) text() string {
 	v := f.get()
 	if f.choices != nil {
 		i := int(v)
@@ -29,6 +35,11 @@ func (f formField) show() string {
 			return "?"
 		}
 		return f.choices[i]
+	}
+	if f.show != nil {
+		if s := f.show(v); s != "" {
+			return s
+		}
 	}
 	return strconv.FormatFloat(v, 'f', f.digits, 64)
 }
@@ -46,155 +57,309 @@ func (f formField) check(v float64) error {
 	return nil
 }
 
+// stepBy: the value moved by n steps, back onto the grid of steps.
+func (f formField) stepBy(n float64) {
+	v := f.get()
+	if f.choices != nil {
+		k := float64(len(f.choices))
+		f.set(math.Mod(v+n+k, k))
+		return
+	}
+	nv := math.Round((v+n*f.step)/f.step) * f.step
+	nv = math.Round(nv*1e6) / 1e6
+	nv = math.Max(f.lo, math.Min(f.hi, nv))
+	f.set(nv)
+}
+
 type numForm struct {
-	title  string
-	fields []formField
-	ok     string // the button that accepts
-	sel    int
-	edit   *field
-	msg    string
-	pic    func(w, h int) []string
-	about  func() []string
+	title   string
+	crumb   string
+	fields  []formField
+	ok      string // the button that accepts
+	extra   string // a third button (Числа по умолчанию), its action
+	onExtra func()
+	about   func() []string
+	scene   func() ui.Scene
+	pick    func(x, y float64) // a click on the sheet in the 3D view
+	sel     int
+	edit    *ui.Field
+	focused string // the field the form gave the keys to
+	msg     string
+	done    chan bool
+	sent    bool
 }
 
-func (f *numForm) count() int { return len(f.fields) + 2 }
-
-// key: true, true accepted; false, true cancelled.
-func (f *numForm) key(k Key) (bool, bool) {
-	nf := len(f.fields)
-	if f.edit != nil {
-		done, cancel := f.edit.key(k)
-		if cancel {
-			f.edit = nil
-		}
-		if done {
-			fl := f.fields[f.sel]
-			v, err := strconv.ParseFloat(strings.ReplaceAll(strings.TrimSpace(f.edit.String()), ",", "."), 64)
-			if err != nil {
-				f.msg = fmt.Sprintf("не число: \"%s\"", f.edit.String())
-			} else if err = fl.check(v); err != nil {
-				f.msg = err.Error()
-			} else {
-				fl.set(v)
-				f.msg = ""
-			}
-			f.edit = nil
-		}
-		return false, false
+// editForm shows the form until accepted (true) or left (false).
+func editForm(f *numForm) bool {
+	f.done = make(chan bool, 1)
+	if f.crumb == "" {
+		f.crumb = crumb + " / " + f.title
 	}
+	old := crumb
+	crumb = f.crumb
+	backToApp()
+	app.Show(f)
+	ok := <-f.done
+	crumb = old
+	return ok
+}
+
+func (f *numForm) answer(ok bool) {
+	if f.edit != nil && ok {
+		f.apply()
+	}
+	if !f.sent {
+		f.sent = true
+		f.done <- ok
+	}
+}
+
+// apply takes the typed number into the chosen field.
+func (f *numForm) apply() {
+	if f.edit == nil || f.sel >= len(f.fields) {
+		return
+	}
+	fl := f.fields[f.sel]
+	s := strings.ReplaceAll(strings.TrimSpace(f.edit.String()), ",", ".")
+	f.edit = nil
+	if s == fl.text() {
+		return
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		f.msg = fmt.Sprintf("не число: \"%s\"", s)
+		return
+	}
+	if err := fl.check(v); err != nil {
+		f.msg = err.Error()
+		return
+	}
+	fl.set(v)
 	f.msg = ""
-	switch k.Code {
-	case KeyUp, KeyBackTab:
-		f.sel = (f.sel + f.count() - 1) % f.count()
-	case KeyDown, KeyTab:
-		f.sel = (f.sel + 1) % f.count()
-	case KeyLeft, KeyRight:
-		dir := 1.0
-		if k.Code == KeyLeft {
-			dir = -1
-		}
-		if f.sel >= nf {
-			f.sel = nf + (f.sel-nf+1)%2
-			break
-		}
-		fl := f.fields[f.sel]
-		v := fl.get()
-		if fl.choices != nil {
-			n := float64(len(fl.choices))
-			fl.set(math.Mod(v+dir+n, n))
-			break
-		}
-		nv := math.Round(math.Round((v+dir*fl.step)/fl.step)*fl.step*1e6) / 1e6
-		fl.set(math.Max(fl.lo, math.Min(fl.hi, nv)))
-	case KeyEnter:
-		switch f.sel - nf {
-		case 0:
-			return true, true
-		case 1:
-			return false, true
-		}
-		fl := f.fields[f.sel]
-		if fl.choices != nil {
-			fl.set(math.Mod(fl.get()+1, float64(len(fl.choices))))
-		} else {
-			f.edit = newField(fl.show())
-		}
-	case KeyEsc, KeyCtrlC:
-		return false, true
-	case KeyRune:
-		if f.sel < nf && f.fields[f.sel].choices == nil && strings.ContainsRune("0123456789.,-", k.R) {
-			f.edit = newField(string(k.R))
-		}
-	}
-	return false, false
 }
 
-const numFormW = 46
+func (f *numForm) choose(i int) {
+	if i == f.sel {
+		return
+	}
+	f.apply()
+	f.sel = i
+}
 
-func (f *numForm) lines() []string {
-	in := inner(numFormW)
-	var body []string
-	for i, fl := range f.fields {
-		lab := padRight("  "+fl.label, 20)
-		v := fl.show()
-		switch {
-		case i == f.sel && f.edit != nil:
-			body = append(body, lab+" "+f.edit.view(9)+" "+fl.unit)
-		case i == f.sel:
-			body = append(body, sel(lab+"◄"+fmt.Sprintf("%9s", v)+" ► "+fl.unit))
-		default:
-			body = append(body, lab+" "+fmt.Sprintf("%9s", v)+"   "+fl.unit)
+func (f *numForm) Draw(c *ui.Ctx) {
+	t := c.T
+	f.keys(c) // before the fields: the arrows step values, they do not move the caret
+	body := ui.Inset(chrome(c, f.crumb), t.Si(16))
+	var left, right image.Rectangle
+	if f.scene != nil && body.Dx() > t.Si(760) {
+		lw := imin(t.Si(500), body.Dx()*9/20)
+		left = ui.CutLeft(&body, lw)
+		ui.CutLeft(&body, t.Si(14))
+		right = body
+	} else if f.scene != nil {
+		right = ui.CutTop(&body, body.Dy()*2/5)
+		ui.CutTop(&body, t.Si(12))
+		left = body
+	} else {
+		w := imin(t.Si(560), body.Dx())
+		left = image.Rect(body.Min.X+(body.Dx()-w)/2, body.Min.Y, body.Min.X+(body.Dx()+w)/2, body.Max.Y)
+	}
+	if f.scene != nil {
+		c.Card(right)
+		hit := c.View3D("form/view", ui.Inset(right, t.Si(1)), f.scene())
+		if hit.Click && f.pick != nil {
+			if p, ok := hit.Cam.PickPlane(hit.X, hit.Y, hit.W, hit.H, 0); ok {
+				f.edit = nil
+				f.pick(p.X, p.Y)
+			}
 		}
 	}
-	body = append(body, sep)
-	for i, b := range []string{f.ok, "Отмена"} {
-		if len(f.fields)+i == f.sel {
-			body = append(body, sel(center("► "+b+" ◄", in)))
-		} else {
-			body = append(body, center(b, in))
+	c.Card(left)
+	in := ui.Inset(left, t.Si(20))
+	c.LabelIn(ui.CutTop(&in, t.Si(30)), f.title, ui.Style{Kind: ui.Bold, Size: ui.SizeTitle, Color: t.Text}, 0)
+	ui.CutTop(&in, t.Si(8))
+	// the buttons
+	foot := ui.CutBottom(&in, t.Si(40))
+	labels := []string{f.ok, "Отмена"}
+	if f.extra != "" {
+		labels = []string{f.ok, f.extra, "Отмена"}
+	}
+	x := foot.Max.X
+	for i := len(labels) - 1; i >= 0; i-- {
+		bw := c.Measure(labels[i], c.Body()) + t.Si(36)
+		x -= bw
+		br := image.Rect(x, foot.Min.Y, x+bw, foot.Max.Y)
+		kind := ui.BtnNormal
+		if i == 0 {
+			kind = ui.BtnPrimary
 		}
+		if c.ButtonX("form/b"+labels[i], br, labels[i], kind, true, i == 0) {
+			switch {
+			case i == 0:
+				f.answer(true)
+			case labels[i] == "Отмена":
+				f.answer(false)
+			default:
+				f.edit = nil
+				if f.onExtra != nil {
+					f.onExtra()
+				}
+			}
+		}
+		x -= t.Si(10)
+	}
+	ui.CutBottom(&in, t.Si(12))
+	// the lines under the fields
+	var notes []string
+	if f.msg != "" {
+		notes = append(notes, "■ "+f.msg)
 	}
 	if f.about != nil {
-		body = append(body, "")
-		for _, l := range f.about() {
-			body = append(body, wrap(l, in, 2)...)
+		notes = append(notes, f.about()...)
+	}
+	nh := 0
+	for _, l := range notes {
+		_, _, rest := lineMark(t, l)
+		nh += c.ParaH(in.Dx()-t.Si(24), rest, c.Muted())
+	}
+	if nh > in.Dy()/3 {
+		nh = in.Dy() / 3
+	}
+	nr := ui.CutBottom(&in, nh)
+	drawLines(c, nr, nr.Min.Y, notes, c.Muted())
+	ui.CutBottom(&in, t.Si(10))
+	// the fields, scrolled when there are many
+	rowH, headH := t.Si(42), t.Si(34)
+	total := 0
+	for _, fl := range f.fields {
+		if fl.group != "" {
+			total += headH
 		}
+		total += rowH
 	}
-	if f.msg != "" {
-		body = append(body, "", "◄ "+f.msg)
-	}
-	return body
+	off := c.Scroll("form/fields", in, total, false)
+	y := in.Min.Y - off
+	c.WithClip(in, func() {
+		for i, fl := range f.fields {
+			if fl.group != "" {
+				c.LabelIn(image.Rect(in.Min.X, y+t.Si(8), in.Max.X, y+headH), fl.group, ui.Style{Kind: ui.Bold, Size: ui.SizeSmall + 1, Color: t.Lavender}, 0)
+				y += headH
+			}
+			rr := image.Rect(in.Min.X, y, in.Max.X-t.Si(8), y+rowH-t.Si(6))
+			if i == f.sel && (rr.Min.Y < in.Min.Y || rr.Max.Y > in.Max.Y) { // keep the chosen field in sight
+				c.SetScroll("form/fields", rr.Min.Y+off-in.Min.Y-in.Dy()/2)
+			}
+			f.drawField(c, i, fl, rr)
+			y += rowH
+		}
+	})
 }
 
-func (f *numForm) view(w, h int) []string {
-	fw := w
-	w -= 4
-	rows := room(fw, h)
-	form := box(thin, f.title, f.lines(), numFormW)
-	body := form
-	if pw := w - numFormW - 3; f.pic != nil && pw >= 24 {
-		if pw > 80 {
-			pw = 80
+func (f *numForm) drawField(c *ui.Ctx, i int, fl formField, r image.Rectangle) {
+	t := c.T
+	on := i == f.sel
+	if on {
+		c.C.FillRoundRect(float64(r.Min.X)-t.S(6), float64(r.Min.Y)-t.S(2), float64(r.Dx())+t.S(12), float64(r.Dy())+t.S(4), t.S(8), gfx.Alpha(t.Surface0, 0.6))
+	}
+	lw := r.Dx() * 2 / 5
+	lab := c.Body()
+	if !on {
+		lab.Color = t.Subtext1
+	}
+	c.LabelIn(image.Rect(r.Min.X+t.Si(4), r.Min.Y, r.Min.X+lw, r.Max.Y), fl.label, lab, 0)
+	box := image.Rect(r.Min.X+lw, r.Min.Y, r.Max.X, r.Max.Y)
+	id := fmt.Sprintf("form/f%d", i)
+	if fl.choices != nil {
+		cells := ui.SplitX(box, len(fl.choices), t.Si(4))
+		cur := int(fl.get())
+		for k, ch := range fl.choices {
+			kind := ui.BtnGhost
+			if k == cur {
+				kind = ui.BtnPrimary
+			}
+			if c.Button(fmt.Sprintf("%s/%d", id, k), cells[k], ch, kind) {
+				f.choose(i)
+				fl.set(float64(k))
+			}
 		}
-		body = beside(form, f.pic(pw, rows-1), 3)
+		return
 	}
-	hint := hints(fw, "↑↓", "поле", "← →", "меньше / больше", "Enter", "ввести", "Esc", "отмена")
-	if f.edit != nil {
-		hint = hints(fw, "Enter", "принять", "Esc", "отменить")
+	bs := box.Dy()
+	minus := ui.CutLeft(&box, bs)
+	plus := ui.CutRight(&box, bs)
+	unitW := 0
+	if fl.unit != "" {
+		unitW = c.Measure(fl.unit, c.Small()) + t.Si(10)
 	}
-	return screen(fw, h, curHead, body, hint)
+	unit := ui.CutRight(&box, unitW)
+	box = ui.InsetXY(box, t.Si(6), 0)
+	if c.IconButton(id+"/-", minus, ui.IconMinus, false) {
+		f.choose(i)
+		fl.stepBy(-1)
+	}
+	if c.IconButton(id+"/+", plus, ui.IconPlus, false) {
+		f.choose(i)
+		fl.stepBy(1)
+	}
+	if fl.unit != "" {
+		c.LabelIn(unit, fl.unit, c.Small(), 0)
+	}
+	if on && f.edit == nil {
+		f.edit = ui.NewField(fl.text())
+	}
+	fd := f.edit
+	if !on || fd == nil {
+		fd = ui.NewField(fl.text())
+	}
+	if c.Focus() == id && !on && f.focused != id { // a click into another field
+		f.choose(i)
+	}
+	if on {
+		c.SetFocus(id)
+		f.focused = id
+	}
+	enter, cancel := c.TextField(id, box, fd, ui.Style{Kind: ui.Mono, Size: ui.SizeBody, Color: t.Text}, 2)
+	if on && enter {
+		f.apply()
+	}
+	if on && cancel {
+		f.edit = nil
+	}
 }
 
-// editForm runs the form; true when the operator accepted the values.
-func editForm(f *numForm) bool {
-	if f.ok == "" {
-		f.ok = "Готово"
+func (f *numForm) keys(c *ui.Ctx) {
+	e, ok := c.Key()
+	if !ok || e.Kind != ui.EvKey {
+		return
 	}
-	ok := false
-	run(f.view, func(k Key) bool {
-		var done bool
-		ok, done = f.key(k)
-		return done
-	}, 500*time.Millisecond)
-	return ok
+	n := len(f.fields)
+	switch e.Key {
+	case ui.KeyUp:
+		f.choose((f.sel + n - 1) % n)
+	case ui.KeyDown, ui.KeyTab:
+		f.choose((f.sel + 1) % n)
+	case ui.KeyLeft, ui.KeyRight:
+		if f.edit != nil && !f.edit.All {
+			return // typing: the arrows move the caret
+		}
+		d := 1.0
+		if e.Key == ui.KeyLeft {
+			d = -1
+		}
+		f.edit = nil
+		f.fields[f.sel].stepBy(d)
+	case ui.KeyPgUp, ui.KeyPgDn:
+		return
+	case ui.KeyEnter:
+		if f.edit != nil && f.edit.String() != f.fields[f.sel].text() {
+			f.apply()
+		} else {
+			f.answer(true)
+		}
+	case ui.KeyEsc:
+		f.answer(false)
+	default:
+		return
+	}
+	c.Use()
 }

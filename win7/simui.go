@@ -7,7 +7,10 @@ package main
 
 import (
 	"fmt"
+	"image"
 	"time"
+
+	"pcbscan/ui"
 )
 
 // faultKeys says whether the digits switch faults on the screen now: on the
@@ -34,16 +37,6 @@ func startSim(o opts) {
 	simM.rnd.Seed(time.Now().UnixNano())
 	simM.Reset()
 	ncWindows = simWindows
-	keyHook = func(k Key) bool {
-		if faultKeys == nil || !faultKeys() {
-			return false
-		}
-		f, ok := faultKey(k)
-		if ok {
-			simM.Toggle(f)
-		}
-		return ok
-	}
 }
 
 // findTouch is the MCU of the work: the virtual one in emulation.
@@ -61,9 +54,9 @@ func findTouch(port string) (Touch, string, error) {
 // mcuAt says where the MCU is: "МК на COM5", or that it is the virtual one.
 func mcuAt(port string) string {
 	if simM != nil {
-		return "МК " + paint(cTitle, "виртуальный")
+		return "МК виртуальный"
 	}
-	return "МК на " + paint(cTitle, port)
+	return "МК на " + port
 }
 
 func simStatus() Status {
@@ -79,106 +72,87 @@ const (
 	simLines
 )
 
-type simPanel struct{ sel int }
-
-func (p *simPanel) key(k Key) bool {
-	switch k.Code {
-	case KeyUp, KeyBackTab:
-		p.sel = (p.sel + simLines - 1) % simLines
-	case KeyDown, KeyTab:
-		p.sel = (p.sel + 1) % simLines
-	case KeyEnter:
-		p.do(p.sel)
-	case KeyEsc, KeyCtrlC:
-		return true
-	case KeyRune:
-		if k.R == ' ' {
-			p.do(p.sel)
-		} else if d := int(k.R - '1'); d >= 0 && d < simLines {
-			p.sel = d
-			p.do(d)
-		}
-	}
-	return false
-}
-
-func (p *simPanel) do(i int) {
-	switch {
-	case i < int(fCount):
-		simM.Toggle(simFault(i))
-	case i == simReset:
-		simM.Reset()
-		logLine("эмуляция: фреза над X0 Y0, 1.5 мм над медью, Z обнулён")
-	case i == simClear:
-		for f := simFault(0); f < fCount; f++ {
-			if simM.On(f) {
-				simM.Toggle(f)
-			}
-		}
-	}
-}
-
-func (p *simPanel) view(w, h int) []string {
-	bw := colW(w)
-	if bw > 64 {
-		bw = 64
-	}
-	x, y, z, moving := simM.WorkPos()
-	state := paint(cHint, "стоит")
+// simPanel: the faults as switches, the tool in 3D.
+func simPanel(c *ui.Ctx, r image.Rectangle) int {
+	t := c.T
+	y := r.Min.Y
+	x, yy, z, moving := simM.WorkPos()
+	state := "стоит"
 	if moving {
-		state = paint(cTouch, "едет")
+		state = "едет"
+		c.Animate()
 	}
-	axis := func(name string, v float64, more string) string {
-		return paint(cHint, name+" ") + paint(cTitle, fmt.Sprintf("%9.3f", v)) + paint(cHint, " мм") + "      " + more
-	}
-	nc := box(thin, "NcStudio, эмуляция", []string{
-		axis("X", x, paint(cHint, "ход    ")+state),
-		axis("Y", y, paint(cHint, "МК     ")+mcuBadge(mcuStateOf(simM))),
-		axis("Z", z, paint(cHint, "время  ")+paint(cTitle, fmt.Sprintf("x%g", simM.Speed))),
-	}, bw)
-	var lines []string
-	for i := 0; i < simLines; i++ {
-		var t string
-		switch {
-		case i < int(fCount):
-			mark := "[ ]"
-			if simM.On(simFault(i)) {
-				mark = "[√]"
-			}
-			t = fmt.Sprintf("%d  %s  %s", simFaults[i].fkey, mark, simFaults[i].long)
-		case i == simReset:
-			lines = append(lines, sep)
-			t = "   Фрезу в начало: X0 Y0, 1.5 мм над медью"
-		case i == simClear:
-			t = "   Выключить все неисправности"
+	mono := ui.Style{Kind: ui.Mono, Size: ui.SizeBody, Color: t.Text}
+	c.Label(r.Min.X, y, fmt.Sprintf("X %8.3f   Y %8.3f   Z %+8.3f   %s, время x%g", x, yy, z, state, simM.Speed), mono)
+	y += c.LineH(mono) + t.Si(14)
+	c.Label(r.Min.X, y, "Неисправности: щелчок или цифра 1-6 включает и выключает", ui.Style{Kind: ui.Bold, Size: ui.SizeSmall + 1, Color: t.Lavender})
+	y += t.Si(26)
+	rowH := t.Si(38)
+	for i := 0; i < int(fCount); i++ {
+		rr := image.Rect(r.Min.X, y, r.Max.X, y+rowH-t.Si(4))
+		on := simM.On(simFault(i))
+		if c.Row(fmt.Sprintf("sim/%d", i), rr, false) {
+			simM.Toggle(simFault(i))
 		}
-		if i == p.sel {
-			lines = append(lines, sel(t))
-		} else if i < int(fCount) && simM.On(simFault(i)) {
-			lines = append(lines, paint(cAlarm, t))
-		} else {
-			lines = append(lines, t)
+		// a switch: a pill with a knob
+		sw := image.Rect(rr.Min.X+t.Si(8), rr.Min.Y+(rr.Dy()-t.Si(20))/2, rr.Min.X+t.Si(44), rr.Min.Y+(rr.Dy()+t.Si(20))/2)
+		bg := t.Surface1
+		kx := float64(sw.Min.X) + t.S(10)
+		if on {
+			bg = t.Red
+			kx = float64(sw.Max.X) - t.S(10)
 		}
+		c.C.FillRoundRect(float64(sw.Min.X), float64(sw.Min.Y), float64(sw.Dx()), float64(sw.Dy()), t.S(10), bg)
+		c.C.FillCircle(kx, float64(sw.Min.Y)+float64(sw.Dy())/2, t.S(7), t.Text)
+		st := c.Body()
+		if on {
+			st.Color = t.Red
+		}
+		c.LabelIn(image.Rect(sw.Max.X+t.Si(12), rr.Min.Y, rr.Max.X, rr.Max.Y), fmt.Sprintf("%d  %s", simFaults[i].fkey, simFaults[i].long), st, 0)
+		y += rowH
 	}
-	faults := box(thin, "Неисправности", lines, bw)
-	var about []string
-	for _, l := range wrap("Заготовка 100x100 мм от X-2 Y-2, перекос и бугор; вне её меди нет.", bw, 0) {
-		about = append(about, center(paint(cHint, l), bw))
-	}
-	body := stack(nc, faults, about)
-	if len(body) > room(w, h) { // the status line shows X Y Z too
-		body = stack(faults, about)
-	}
-	if len(body) > room(w, h) {
-		body = faults
-	}
-	return screen(w, h, menuTitle("9"), body,
-		hints(w, "↑↓", "выбор", "Enter", "вкл / выкл", "1-6", "сразу", "Esc", "в меню"))
+	y += t.Si(8)
+	c.Label(r.Min.X, y, "Заготовка 100x100 мм от X-2 Y-2, перекос и бугор; вне её меди нет.", c.Small())
+	y += c.LineH(c.Small())
+	return y - r.Min.Y
 }
 
-// cmdSim is menu item 8: the virtual machine and its faults.
+// cmdSim: the virtual machine and its faults.
 func cmdSim(o opts) error {
-	p := &simPanel{}
-	run(p.view, p.key, 200*time.Millisecond)
-	return nil
+	p := newPage(menuTitle("9"))
+	p.set(func() {
+		p.head = "Эмуляция"
+		p.extra = simPanel
+		p.scene = jobToolScene()
+	})
+	defer faultKeysOn(func() bool { return true })()
+	for {
+		switch p.ask(pageBtn{id: "reset", label: "Фрезу в начало", kind: ui.BtnNormal},
+			pageBtn{id: "clear", label: "Выключить все", kind: ui.BtnNormal},
+			pageBtn{id: "ok", label: "Готово", kind: ui.BtnPrimary, key: ui.KeyEsc}) {
+		case "reset":
+			simM.Reset()
+			logLine("эмуляция: фреза над X0 Y0, 1.5 мм над медью, Z обнулён")
+		case "clear":
+			for f := simFault(0); f < fCount; f++ {
+				if simM.On(f) {
+					simM.Toggle(f)
+				}
+			}
+		default:
+			return nil
+		}
+	}
+}
+
+// faultChar: a digit on a work screen switches a fault of the emulation.
+func faultChar(e ui.Event) bool {
+	if simM == nil || faultKeys == nil || !faultKeys() || e.Kind != ui.EvChar {
+		return false
+	}
+	f, ok := faultKey(e.Rune)
+	if ok {
+		simM.Toggle(f)
+	}
+	return ok
 }
