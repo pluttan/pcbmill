@@ -26,7 +26,7 @@ type manual struct {
 
 func newManual(o opts, nc *NcStudio, m Touch, port string) *manual {
 	s := &manual{o: o, nc: nc, m: m, port: port, title: o.title, step: 0.1, stepX: 1, stepY: 1, stepFast: 1}
-	s.p = &page{title: menuTitle("6")}
+	s.p = &page{title: menuTitle("7")}
 	s.p.screenFn = s.view
 	return s
 }
@@ -403,7 +403,7 @@ func (s *manual) view(w, h int) []string {
 	if s.cmd != nil {
 		hint = hints(w, "Enter", "выполнить", "Esc", "закрыть строку")
 	}
-	return screen(w, h, menuTitle("6"), body, hint)
+	return screen(w, h, menuTitle("7"), body, hint)
 }
 
 // cmdManual: the operator drives NcStudio through this program step by step,
@@ -412,7 +412,7 @@ func cmdManual(o opts) error {
 	var m Touch
 	var name string
 	if confirm("Подключить МК (показывать касание)?", "Без МК нельзя опустить до меди (T), а касание не видно.") {
-		newPage(menuTitle("6"), "Ищу МК на COM-портах...")
+		newPage(menuTitle("7"), "Ищу МК на COM-портах...")
 		mc, n, err := findTouch(o.port)
 		if err != nil {
 			return err

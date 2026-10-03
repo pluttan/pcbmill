@@ -225,13 +225,14 @@ func TestMenuScreen(t *testing.T) {
 		m := newMenuNav(mainMenu)
 		m.move(1)
 		m.move(1)
+		m.move(1)
 		fr := m.view(sz[0], sz[1])
 		if len(fr) != sz[1] {
 			t.Fatalf("%v: %d строк", sz, len(fr))
 		}
 		onScreen(t, "меню", fr, sz[0])
 		centred(t, "меню", fr, sz[0], "Снять карту высот")
-		selected(t, fr, "► 3   Снять карту высот")
+		selected(t, fr, "► 4   Снять карту высот")
 		all := plainFrame(fr)
 		for _, want := range []string{"Выход", "Найти координаты", "Esc", "■ МК", "сетка точек"} {
 			if !strings.Contains(all, want) {

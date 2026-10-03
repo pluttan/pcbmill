@@ -32,7 +32,7 @@ func wireBig(touching bool, hits int, since string, w int) []string {
 }
 
 func cmdWire(o opts) error {
-	p := newPage(menuTitle("1"), "Ищу МК на COM-портах...")
+	p := newPage(menuTitle("2"), "Ищу МК на COM-портах...")
 	m, name, err := findTouch(o.port)
 	if err != nil {
 		return err
@@ -70,7 +70,7 @@ func cmdWire(o opts) error {
 }
 
 func cmdNcTest(o opts) error {
-	p := newPage(menuTitle("2"),
+	p := newPage(menuTitle("3"),
 		"Фреза не ниже 5 мм над заготовкой. Программа нажмёт в NcStudio "+paint(cKey, o.mdiKey)+" и введёт",
 		"  "+paint(cTitle, "G91 G00 Z1")+"   вверх на 1 мм, потом",
 		"  "+paint(cTitle, "G91 G00 Z-1")+"  обратно.",
@@ -136,7 +136,7 @@ func cmdZero(o opts) error {
 		first = g.Points()[0]
 		from = "scan.csv нет, первая точка сетки по программе"
 	}
-	p := newPage(menuTitle("4"), "Ищу МК на COM-портах...")
+	p := newPage(menuTitle("5"), "Ищу МК на COM-портах...")
 	m, _, err := findTouch(o.port)
 	if err != nil {
 		return err
@@ -178,7 +178,7 @@ func cmdZero(o opts) error {
 	if err := nc.RapidZ(o.clear * 3); err != nil {
 		return err
 	}
-	sayOK("Z0 стоит на меди в первой точке карты. Теперь пункт 5 и запуск *_level.tap.")
+	sayOK("Z0 стоит на меди в первой точке карты. Теперь пункт 6 и запуск *_level.tap.")
 	p.wait()
 	return nil
 }
@@ -212,9 +212,9 @@ func cmdLevel(o opts) error {
 	if x0, x1, y0, y1, e := CutBounds(lines); e == nil {
 		cut = &rect{x0, x1, y0, y1}
 	}
-	mapResult(menuTitle("5"), hm, cut, []string{
+	mapResult(menuTitle("6"), hm, cut, []string{
 		paint(cOK, "√ Готово: "+filepath.Base(dst)),
-		"Запускать в NcStudio этот файл, ноль Z ставить пунктом 4.",
+		"Запускать в NcStudio этот файл, ноль Z ставить пунктом 5.",
 	})
 	return nil
 }
@@ -252,7 +252,7 @@ var ncWindows = NcWindows
 // cmdFindCoords: can this program read the X/Y/Z NcStudio shows? Snapshot the text
 // of every NcStudio control, move each axis by 1 mm, and see which texts change.
 func cmdFindCoords(o opts) error {
-	p := newPage(menuTitle("7"),
+	p := newPage(menuTitle("8"),
 		"Программа ищет, откуда можно читать координаты NcStudio.",
 		"Станок сдвинется: Z вверх на 1 мм, X на +1, Y на +1, и вернётся обратно.",
 		paint(cHint, "Фреза должна быть поднята над платой, шпиндель стоять."))

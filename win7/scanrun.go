@@ -70,7 +70,7 @@ func cmdScan(o opts) error {
 		return nil
 	}
 	pts := g.Points()
-	p := newPage(menuTitle("3"), "Ищу МК на COM-портах...")
+	p := newPage(menuTitle("4"), "Ищу МК на COM-портах...")
 	m, name, err := findTouch(o.port)
 	if err != nil {
 		return err
@@ -177,6 +177,6 @@ func cmdScan(o opts) error {
 		info = append(info, paint(cOK, "√ Сдвиг в норме, карте можно верить."))
 	}
 	info = append(info, paint(cOK, "√ Карта записана: ")+filepath.Base(out)+paint(cHint, " рядом с программой"))
-	mapResult(menuTitle("3")+": готово", hm, &cut, info)
+	mapResult(menuTitle("4")+": готово", hm, &cut, info)
 	return nil
 }

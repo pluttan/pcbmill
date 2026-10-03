@@ -172,10 +172,10 @@ func TestSimPanel(t *testing.T) {
 	if f, ok := faultKey(runeKey('2')); !ok || f != fClip {
 		t.Fatal("2")
 	}
-	// the menu has the item 8 only in emulation
+	// the menu has the item 9 only in emulation
 	useTerm(t, 80, 25)
 	fr := newMenuNav(menuItems()).view(80, 25)
-	if !strings.Contains(plainFrame(fr), "8   Эмуляция") || !strings.Contains(plainFrame(fr), "1-8") {
+	if !strings.Contains(plainFrame(fr), "9   Эмуляция") || !strings.Contains(plainFrame(fr), "1-9") {
 		t.Fatal(plainFrame(fr))
 	}
 	centred(t, "меню эмуляции", fr, 80, "Выход")

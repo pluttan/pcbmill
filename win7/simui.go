@@ -172,7 +172,7 @@ func (p *simPanel) view(w, h int) []string {
 	if len(body) > room(w, h) {
 		body = faults
 	}
-	return screen(w, h, menuTitle("8"), body,
+	return screen(w, h, menuTitle("9"), body,
 		hints(w, "↑↓", "выбор", "Enter", "вкл / выкл", "1-6", "сразу", "Esc", "в меню"))
 }
 

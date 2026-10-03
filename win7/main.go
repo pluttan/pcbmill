@@ -325,8 +325,8 @@ func status(o opts) Status {
 }
 
 var commands = map[string]func(opts) error{
-	"1": cmdWire, "2": cmdNcTest, "3": cmdScan, "4": cmdZero, "5": cmdLevel, "6": cmdManual, "7": cmdFindCoords,
-	"8": cmdSim,
+	"1": cmdGerber, "2": cmdWire, "3": cmdNcTest, "4": cmdScan, "5": cmdZero, "6": cmdLevel, "7": cmdManual,
+	"8": cmdFindCoords, "9": cmdSim,
 }
 
 func main() {
@@ -367,6 +367,12 @@ func main() {
 		}
 	}()
 	statusFn = func() Status { return statusCached(o) }
+	if a := flag.Args(); len(a) > 0 { // a zip of a board dropped onto the exe
+		curHead = menuTitle("1")
+		if err := gerberFrom(a[0]); err != nil {
+			alert(err)
+		}
+	}
 	nav := newMenuNav(menuItems())
 	for {
 		cur, curHead = nil, ""

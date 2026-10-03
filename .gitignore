@@ -11,3 +11,4 @@ cnc/
 scan*.csv
 /win7/*.exe
 /win7/mac/
+/win7/*.test
