@@ -118,7 +118,7 @@ cv.addEventListener('mousedown', e => {
   cv.focus();
   e.preventDefault();
   const [x, y] = pos(e);
-  push({t: 'down', b: e.button, x: x, y: y});
+  push({t: 'down', b: e.button, x: x, y: y, m: mods(e)});
 });
 // on window: a drag that leaves the page still reports moves and the release
 window.addEventListener('mouseup', e => {

@@ -91,7 +91,7 @@ func (c *Ctx) View3D(id string, r image.Rectangle, sc Scene) ViewHit {
 	if over && !overBar {
 		if e.Kind == EvMouseDown {
 			vs.drag = 1
-			if e.Button != BtnLeft {
+			if e.Button != BtnLeft || e.Mods&ModShift != 0 { // Shift: a trackpad has no right drag
 				vs.drag = 2
 			}
 			vs.last, vs.moved = image.Pt(e.X, e.Y), 0

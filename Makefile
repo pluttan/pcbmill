@@ -42,18 +42,19 @@ scan-demo:        ## обход сетки на симуляторе станк�
 
 GO ?= go1.20      # last Go that still targets Windows 7
 
-win7:             ## win7/pcbscan.exe for the NcStudio PC (Go 1.20, 32-bit)
-	cd win7 && $(GO) test . && GOOS=windows GOARCH=386 CGO_ENABLED=0 $(GO) build -trimpath -ldflags "-s -w" -o pcbscan.exe .
+win7:             ## win7/pcbscan.exe for the NcStudio PC (Go 1.20, 32-bit, a window without a console)
+	cd win7 && $(GO) test ./... && GOOS=windows GOARCH=386 $(GO) vet ./... && \
+		GOOS=windows GOARCH=386 CGO_ENABLED=0 $(GO) build -trimpath -ldflags "-s -w -H windowsgui" -o pcbscan.exe .
 
-mac:              ## win7/mac/: pcbscan for macOS (Apple Silicon), two board zips; emulation is on there
-	cd win7 && $(GO) test . && GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 $(GO) build -trimpath -o mac/pcbscan . && \
-		cp testdata/gerbers/2032Charger.zip testdata/gerbers/16KeyKeyboardPico.zip mac/
+mac:              ## win7/mac/: pcbscan for macOS (Apple Silicon) with two boards; opens in the browser, emulation is on
+	cd win7 && $(GO) test ./... && GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 $(GO) build -trimpath -o mac/pcbscan . && \
+		cp testdata/gerbers/2032Charger.zip mac/ && mkdir -p mac/eagle-demo && cp ../examples/gerbers/eagle/* mac/eagle-demo/
 
 test:             ## опасные программы ловятся, свои проходят, обход на симуляторе, сквозная цепочка
 	$(PY) tests/test_verify.py
 	$(PY) tests/test_scan.py
 	$(PY) tests/test_calib.py
-	cd win7 && $(GO) test .
+	cd win7 && $(GO) test ./...
 	$(PY) tests/check.py examples/gerbers/*/
 
 clean:

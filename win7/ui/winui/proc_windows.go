@@ -243,7 +243,7 @@ func (w *Window) mouse(m, wp, lp uintptr) (uintptr, bool) {
 		return 0, true
 	case wmLButtonDown, wmRButtonDown, wmMButtonDown:
 		pSetCapture.Call(w.hwnd) // drags keep reporting outside the window
-		w.post(ui.Event{Kind: ui.EvMouseDown, Button: button(m), X: x, Y: y})
+		w.post(ui.Event{Kind: ui.EvMouseDown, Button: button(m), X: x, Y: y, Mods: mods()})
 		return 0, true
 	case wmLButtonUp, wmRButtonUp, wmMButtonUp:
 		if wp&(mkLButton|mkRButton|mkMButton) == 0 {

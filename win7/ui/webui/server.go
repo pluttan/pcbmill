@@ -189,7 +189,7 @@ func (w *Window) convert(pe pageEvent) []ui.Event {
 		if pe.T == "up" {
 			k = ui.EvMouseUp
 		}
-		return []ui.Event{{Kind: k, Button: domButton(pe.B), X: x, Y: y}}
+		return []ui.Event{{Kind: k, Button: domButton(pe.B), X: x, Y: y, Mods: ui.Mods(pe.M) & ui.ModShift}}
 	case "wheel":
 		return []ui.Event{{Kind: ui.EvWheel, Wheel: pe.D, X: x, Y: y}}
 	case "leave":
