@@ -185,10 +185,8 @@ func (u *jobUI) kids(i int) []jnode {
 		s := stages[i-2]
 		var out []jnode
 		if s.key == "mask" {
-			z := j.zero()
 			out = append(out, jnode{icon: " ", title: "Сначала маска", about: []string{
 				"Нанесите паяльную маску на платы и высушите её.",
-				fmt.Sprintf("Угол листа ♦ X%s Y%s оставьте без маски: там касание Z0.", num(z.X), num(z.Y)),
 				"Лист со стола не снимать: карта высот та же."}})
 		}
 		files, _, _ := u.stageState(s.prefix)
@@ -611,7 +609,7 @@ func (u *jobUI) sheetForm() error {
 		{label: "отступ от края", unit: "мм", lo: 4, hi: 30, step: 1, digits: 1, get: func() float64 { return m }, set: func(v float64) { m = v }},
 		{label: "зазор плат", unit: "мм", lo: 0, hi: 20, step: 0.5, digits: 1, get: func() float64 { return g }, set: func(v float64) { g = v }},
 	}, about: func() []string {
-		return []string{fmt.Sprintf("Ноль Z касается в углу X%s Y%s: медь там без маски.", num(m/2), num(m/2)),
+		return []string{fmt.Sprintf("Ноль Z касается в углу X%s Y%s.", num(m/2), num(m/2)),
 			"Зазор - между контурами плат; V-резом их потом отламывают."}
 	}}
 	if !editForm(f) {

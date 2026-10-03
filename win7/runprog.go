@@ -94,7 +94,7 @@ func runProg(o opts, j *Job, c camCfg, file, stage string) (bool, error) {
 	// the tool and Z0: after the map and after every change of tool
 	tool, had := toolOf(file, c), j.Done["_tool"]
 	z := j.zero()
-	corner := fmt.Sprintf("♦ X%s Y%s (угол листа, медь без маски)", num(z.X), num(z.Y))
+	corner := fmt.Sprintf("♦ X%s Y%s (угол листа)", num(z.X), num(z.Y))
 	needZero := had != tool
 	curHead = title
 	newPage(title)
