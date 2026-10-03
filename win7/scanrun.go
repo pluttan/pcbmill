@@ -34,24 +34,23 @@ func (e escStop) RapidXY(x, y float64) error {
 	return e.Machine.RapidXY(x, y)
 }
 
-// scanInfo: the progress lines over the picture.
+// scanInfo: the progress lines over the picture: the bar with its percent,
+// the count and the time left, then what is being done.
 func scanInfo(done, all int, start time.Time, last, phase string) []string {
-	left := "считаю время..."
+	left := paint(cHint, "считаю время")
 	if done > 0 && done < all {
 		rest := time.Since(start) / time.Duration(done) * time.Duration(all-done)
-		left = fmt.Sprintf("осталось ~%s мин", paint(cTitle, fmt.Sprintf("%.0f", math.Ceil(rest.Minutes()))))
+		left = paint(cHint, "осталось ~") + val(fmt.Sprintf("%.0f", math.Ceil(rest.Minutes())), "мин")
 	}
 	if done >= all {
-		left = "все точки сняты"
+		left = paint(cOK, "все точки сняты")
 	}
-	out := []string{
-		bar(done, all, 30) + fmt.Sprintf("  %s из %d   ", paint(cTitle, fmt.Sprint(done)), all) + left,
-	}
+	out := []string{bar(done, all, 24) + "   " + val(fmt.Sprint(done), "") + paint(cHint, fmt.Sprintf(" из %d", all)) + "   " + left}
 	if phase != "" {
 		out = append(out, paint(cKey, phase))
 	}
 	if last != "" {
-		out = append(out, "последняя: "+last)
+		out = append(out, paint(cHint, "последняя ")+last)
 	}
 	return out
 }
@@ -72,13 +71,15 @@ func cmdScan(o opts) error {
 	}
 	pts := g.Points()
 	p := newPage(menuTitle("3"), "Ищу МК на COM-портах...")
-	m, name, err := findMCU(o.port)
+	m, name, err := findTouch(o.port)
 	if err != nil {
 		return err
 	}
 	p.set(func() {
+		p.head = "Перед обходом"
 		p.info = []string{
-			fmt.Sprintf("МК на %s. Точек %d, примерно %.0f мин.", paint(cOK, name), len(pts), float64(len(pts))*secondsPerPoint/60),
+			fmt.Sprintf("%s. Точек %s, примерно %s.", mcuAt(name), paint(cTitle, fmt.Sprint(len(pts))),
+				val(fmt.Sprintf("%.0f", float64(len(pts))*secondsPerPoint/60), "мин")),
 			"В NcStudio ноль X0 Y0 стоит как для этой платы, шпиндель выключен,",
 			fmt.Sprintf("фреза (любая крепкая) на 1-2 мм над медью рядом с %s.",
 				paint(cZero, fmt.Sprintf("♦ X%.1f Y%.1f", pts[0][0], pts[0][1]))),
@@ -92,6 +93,10 @@ func cmdScan(o opts) error {
 	})
 	if !confirm("Z обнулён, начать обход?") {
 		return nil
+	}
+	if simM != nil {
+		simM.ZeroZ() // what the operator has done in NcStudio
+		logLine(paint(cHint, "эмуляция: Z обнулён в NcStudio на высоте старта"))
 	}
 	out := filepath.Join(exeDir(), "scan.csv")
 	f, err := os.Create(out)
@@ -112,7 +117,7 @@ func cmdScan(o opts) error {
 	refresh := func() { p.info = scanInfo(len(done), len(pts), start, last, phase) }
 	p.set(func() {
 		refresh()
-		p.nolog = true
+		p.nolog, p.head = true, "Обход"
 		p.keys = []string{"Esc", "стоп между точками", "щелчок по другому окну", "стоп сразу"}
 		p.pic = func(w, h int) []string {
 			return fitRows(h, func(r int) []string { return scanView(g, &cut, done, blink, w, r) })
@@ -166,7 +171,7 @@ func cmdScan(o opts) error {
 	} else {
 		info = append(info, paint(cOK, "√ Сдвиг в норме, карте можно верить."))
 	}
-	info = append(info, paint(cOK, "√ Карта записана: ")+out)
+	info = append(info, paint(cOK, "√ Карта записана: ")+filepath.Base(out)+paint(cHint, " рядом с программой"))
 	mapResult(menuTitle("3")+": готово", hm, &cut, info)
 	return nil
 }

@@ -8,7 +8,7 @@ LOG     ?=
 DIALECT ?= grbl
 SIDE    ?= auto
 
-.PHONY: all install cam probe level show check selftest calib scan-demo win7 test clean
+.PHONY: all install cam probe level show check selftest calib scan-demo win7 mac test clean
 
 all: install
 
@@ -44,6 +44,10 @@ GO ?= go1.20      # last Go that still targets Windows 7
 
 win7:             ## win7/pcbscan.exe for the NcStudio PC (Go 1.20, 32-bit)
 	cd win7 && $(GO) test . && GOOS=windows GOARCH=386 CGO_ENABLED=0 $(GO) build -trimpath -ldflags "-s -w" -o pcbscan.exe .
+
+mac:              ## win7/mac/: pcbscan for macOS (Apple Silicon) and an example program; emulation is on there
+	cd win7 && $(GO) test . && GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 $(GO) build -trimpath -o mac/pcbscan . && \
+		cp ../examples/calib/calib_geom.tap mac/
 
 test:             ## опасные программы ловятся, свои проходят, обход на симуляторе, сквозная цепочка
 	$(PY) tests/test_verify.py

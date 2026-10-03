@@ -102,15 +102,19 @@ func TestFrames(t *testing.T) {
 	for _, w := range []int{30, 40, 60, 78, 110} {
 		closed(t, "box", box(thin, "Перед стартом", []string{long, sep, "", paint(cHint, "коротко")}, w), thin, w)
 		closed(t, "box без заголовка", box(thin, "", []string{"x"}, w), thin, w)
-		closed(t, "logo", logo(w, false), thick, w)
-		closed(t, "ручной", box(thin, "Команды", twoCols(newManual(opts{search: 3}, nil, nil, "").keys(), w-4), w), thin, w)
+		onScreen(t, "logo", logo(w, false), w)
+		closed(t, "ручной", box(thin, "Команды", twoCols(newManual(opts{search: 3}, nil, nil, "").keys(), inner(w)), w), thin, w)
+		closed(t, "выбор", box(thin, "Меню", []string{"  1   один", sel("► 2   два"), sep}, w), thin, w)
 		closed(t, "сетка", newGridForm(GridFor(0.63, 61.26, 1.8, 46.05, 10)).form(), thin, formW)
-		onScreen(t, "rule", rule("3 ► Карта высот", w), w)
 		onScreen(t, "note", note("■", cAlarm, "ОСТАНОВ:", long, w), w)
-		onScreen(t, "bar", []string{bar(3, 7, 12), bar(9, 7, 12), bar(0, 0, 12)}, 12)
+		for _, b := range []string{bar(3, 7, 12), bar(9, 7, 12), bar(0, 0, 12), bar(7, 7, 12)} {
+			if vlen(b) != 17 {
+				t.Fatalf("полоса %q шириной %d", strip(b), vlen(b))
+			}
+		}
 	}
 	// the manual-mode keys fit two columns on an 80-column console
-	if l := twoCols(newManual(opts{search: 3}, nil, nil, "").keys(), 74); len(l) != 5 {
+	if l := twoCols(newManual(opts{search: 3}, nil, nil, "").keys(), inner(78)); len(l) != 5 {
 		t.Fatalf("ручной режим не в две колонки: %d строк", len(l))
 	}
 }
@@ -128,12 +132,12 @@ func TestStatusLine(t *testing.T) {
 		}
 	}
 	all := strip(strings.Join(statusLine(Status{Port: "COM5", MCU: mcuContact, Nc: true, HasZ: true}, 78), "\n"))
-	for _, want := range []string{"COM5", "КОНТАКТ", "NcStudio найдена", "Z от старта +0.000"} {
+	for _, want := range []string{"МК COM5  КОНТАКТ", "NcStudio  ОК", "Z от старта +0.000 мм"} {
 		if !strings.Contains(all, want) {
 			t.Errorf("в статусе нет %q: %q", want, all)
 		}
 	}
-	if s := strip(strings.Join(statusLine(Status{Port: "COM5", MCU: mcuDead}, 78), "")); !strings.Contains(s, "НЕ ОТВЕЧАЕТ") {
+	if s := strip(strings.Join(statusLine(Status{Port: "COM5", MCU: mcuDead}, 78), "")); !strings.Contains(s, "НЕТ СВЯЗИ") {
 		t.Error(s)
 	}
 }

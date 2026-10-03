@@ -57,6 +57,55 @@ func newCanvas(area rect, maxCols, maxRows int) *tableCanvas {
 	return c
 }
 
+// newGridCanvas is newCanvas for a regular grid of points xs x ys: the scale
+// is picked so that every step of the grid is the same whole number of cells,
+// and the points stand evenly. Cells keep about 2:1 like the console's; a
+// grid too wide for that gets narrower columns. Irregular or too dense grids
+// fall back to newCanvas.
+func newGridCanvas(area rect, xs, ys []float64, maxCols, maxRows int) *tableCanvas {
+	dx, dy := 0.0, 0.0
+	if len(xs) > 1 {
+		dx = xs[1] - xs[0]
+	}
+	if len(ys) > 1 {
+		dy = ys[1] - ys[0]
+	}
+	if dx <= 1e-9 {
+		dx = dy
+	}
+	if dy <= 1e-9 {
+		dy = dx
+	}
+	spanX, spanY := area.X1-area.X0, area.Y1-area.Y0
+	if dx <= 1e-9 || spanX < 1e-9 && spanY < 1e-9 {
+		return newCanvas(area, maxCols, maxRows)
+	}
+	for r := maxRows; r >= 1; r-- {
+		c := int(math.Round(2 * float64(r) * dx / dy))
+		if c < 1 {
+			c = 1
+		}
+		if int(math.Round(spanY*float64(r)/dy))+3 > maxRows {
+			continue
+		}
+		for int(math.Round(spanX*float64(c)/dx))+3 > maxCols && c > 1 && r == 1 {
+			c--
+		}
+		if int(math.Round(spanX*float64(c)/dx))+3 > maxCols {
+			continue
+		}
+		cv := &tableCanvas{area: area, sx: float64(c) / dx, sy: float64(r) / dy}
+		cv.cols = int(math.Round(spanX*cv.sx)) + 3
+		cv.rows = int(math.Round(spanY*cv.sy)) + 3
+		cv.cell = make([][]string, cv.rows)
+		for i := range cv.cell {
+			cv.cell[i] = strings.Split(spaces(cv.cols), "")
+		}
+		return cv
+	}
+	return newCanvas(area, maxCols, maxRows)
+}
+
 func (c *tableCanvas) col(x float64) int { return 1 + int(math.Round((x-c.area.X0)*c.sx)) }
 func (c *tableCanvas) row(y float64) int { return 1 + int(math.Round((c.area.Y1-y)*c.sy)) }
 func (c *tableCanvas) x(col int) float64 { return c.area.X0 + float64(col-1)/c.sx }
@@ -73,17 +122,17 @@ func (c *tableCanvas) set(col, row int, s string) {
 func (c *tableCanvas) frame(r rect) {
 	c0, c1, r0, r1 := c.col(r.X0), c.col(r.X1), c.row(r.Y1), c.row(r.Y0)
 	for k := c0 + 1; k < c1; k++ {
-		c.set(k, r0, paint(cFrame, "─"))
-		c.set(k, r1, paint(cFrame, "─"))
+		c.set(k, r0, paint(cCut, "─"))
+		c.set(k, r1, paint(cCut, "─"))
 	}
 	for k := r0 + 1; k < r1; k++ {
-		c.set(c0, k, paint(cFrame, "│"))
-		c.set(c1, k, paint(cFrame, "│"))
+		c.set(c0, k, paint(cCut, "│"))
+		c.set(c1, k, paint(cCut, "│"))
 	}
-	c.set(c0, r0, paint(cFrame, "┌"))
-	c.set(c1, r0, paint(cFrame, "┐"))
-	c.set(c0, r1, paint(cFrame, "└"))
-	c.set(c1, r1, paint(cFrame, "┘"))
+	c.set(c0, r0, paint(cCut, "┌"))
+	c.set(c1, r0, paint(cCut, "┐"))
+	c.set(c0, r1, paint(cCut, "└"))
+	c.set(c1, r1, paint(cCut, "┘"))
 }
 
 // mm is a coordinate for an axis label: no trailing zeros.
@@ -110,7 +159,7 @@ func (c *tableCanvas) render(xs, ys []float64) []string {
 		xTick[c.col(x)] = true
 	}
 	var out []string
-	out = append(out, fmt.Sprintf("%*s ", gutter-1, "Y, мм")+paint(cFrame, "▲"))
+	out = append(out, paint(cHint, fmt.Sprintf("%*s ", gutter-1, "Y, мм"))+paint(cFrame, "▲"))
 	for r := 0; r < c.rows; r++ {
 		l, axis := spaces(gutter), "│"
 		if v, ok := yTick[r]; ok {
@@ -126,7 +175,7 @@ func (c *tableCanvas) render(xs, ys []float64) []string {
 			ax.WriteString("─")
 		}
 	}
-	out = append(out, spaces(gutter)+paint(cFrame, "└"+ax.String()+"─►")+" X, мм")
+	out = append(out, spaces(gutter)+paint(cFrame, "└"+ax.String()+"─►")+paint(cHint, " X, мм"))
 	// X labels: the ends first, then whatever fits between them with a space around
 	width := gutter + 1 + c.cols + 2
 	lab := []rune(spaces(width + 6))
@@ -213,11 +262,11 @@ func gridViewRows(g Grid, cut *rect, w, rows int) []string {
 	if cut != nil {
 		area = area.union(*cut)
 	}
-	c := newCanvas(area, w-gutter-1-2-6, rows)
+	xs, ys := spread(g.X0, g.X1, g.NX), spread(g.Y0, g.Y1, g.NY)
+	c := newGridCanvas(area, xs, ys, w-gutter-1-2-6, rows)
 	if cut != nil {
 		c.frame(*cut)
 	}
-	xs, ys := spread(g.X0, g.X1, g.NX), spread(g.Y0, g.Y1, g.NY)
 	for _, y := range ys {
 		for _, x := range xs {
 			c.set(c.col(x), c.row(y), paint(cTitle, "■"))
@@ -226,9 +275,9 @@ func gridViewRows(g Grid, cut *rect, w, rows int) []string {
 	first := g.Points()[0]
 	c.set(c.col(first[0]), c.row(first[1]), paint(cZero, "♦"))
 	out := c.render(xs, ys)
-	items := []string{paint(cTitle, "■") + " точка касания", paint(cZero, "♦") + " первая точка, ноль Z"}
+	items := []string{paint(cTitle, "■") + paint(cHint, " точка касания"), paint(cZero, "♦") + paint(cHint, " первая точка, ноль Z")}
 	if cut != nil {
-		items = append(items, paint(cFrame, "┌┐")+" рез программы")
+		items = append(items, paint(cCut, "┌┐")+paint(cHint, " рез программы"))
 	}
 	return append(out, legend(items, w)...)
 }
@@ -270,7 +319,7 @@ func heightViewRows(h *HeightMap, cut *rect, w, rows int) []string {
 	if cut != nil {
 		area = area.union(*cut)
 	}
-	c := newCanvas(area, w-gutter-1-2-6, rows)
+	c := newGridCanvas(area, h.xs, h.ys, w-gutter-1-2-6, rows)
 	lo, hi := h.span()
 	for r := c.row(gb.Y1); r <= c.row(gb.Y0); r++ {
 		for k := c.col(gb.X0); k <= c.col(gb.X1); k++ {
@@ -288,21 +337,21 @@ func heightViewRows(h *HeightMap, cut *rect, w, rows int) []string {
 	}
 	c.set(c.col(h.zx), c.row(h.zy), paint(cZero, "♦"))
 	out := c.render(h.xs, h.ys)
-	var items []string
+	var scale []string
 	if hi-lo < 1e-9 {
-		items = append(items, paint(shadeColor[0], shades[0])+" вся медь на одной высоте")
+		scale = append(scale, paint(shadeColor[0], shades[0])+paint(cHint, " вся медь на одной высоте"))
 	} else {
-		d := (hi - lo) / float64(len(shades))
+		bar := ""
 		for k := range shades {
-			items = append(items, fmt.Sprintf("%s %+.3f..%+.3f", paint(shadeColor[k], shades[k]), lo+d*float64(k), lo+d*float64(k+1)))
+			bar += paint(shadeColor[k], shades[k]+shades[k])
 		}
-		items[len(items)-1] += " мм"
+		scale = append(scale, paint(cHint, "мин ")+paint(cTitle, fmt.Sprintf("%+.3f", lo))+" "+bar+" "+
+			paint(cHint, "макс ")+paint(cTitle, fmt.Sprintf("%+.3f", hi))+paint(cHint, " мм"))
 	}
-	out = append(out, legend(items, w)...)
-	stats := []string{paint(cZero, "♦") + " ноль Z, первая точка",
-		fmt.Sprintf("мин %+.3f  макс %+.3f  перепад %s мм", lo, hi, paint(cTitle, fmt.Sprintf("%.3f", hi-lo)))}
+	stats := []string{scale[0], paint(cZero, "♦") + paint(cHint, " ноль Z, первая точка"),
+		paint(cHint, "перепад ") + val(fmt.Sprintf("%.3f", hi-lo), "мм")}
 	if cut != nil {
-		stats = append(stats, paint(cFrame, "┌┐")+" рез")
+		stats = append(stats, paint(cCut, "┌┐")+paint(cHint, " рез"))
 	}
 	return append(out, legend(stats, w)...)
 }
@@ -352,7 +401,8 @@ func scanView(g Grid, cut *rect, done []Point, blink bool, w, rows int) []string
 	if cut != nil {
 		area = area.union(*cut)
 	}
-	c := newCanvas(area, w-gutter-1-2-6, rows)
+	xs, ys := spread(g.X0, g.X1, g.NX), spread(g.Y0, g.Y1, g.NY)
+	c := newGridCanvas(area, xs, ys, w-gutter-1-2-6, rows)
 	if cut != nil {
 		c.frame(*cut)
 	}
@@ -376,11 +426,14 @@ func scanView(g Grid, cut *rect, done []Point, blink bool, w, rows int) []string
 		}
 		c.set(c.col(p[0]), c.row(p[1]), mark)
 	}
-	out := c.render(spread(g.X0, g.X1, g.NX), spread(g.Y0, g.Y1, g.NY))
-	items := []string{paint(cYellow, "■") + " касание сейчас", paint(cHint, "·") + " впереди"}
+	out := c.render(xs, ys)
+	items := []string{paint(cYellow, "■") + paint(cHint, " касание сейчас"), paint(cHint, "· впереди")}
 	if len(done) > 1 && hi-lo > 1e-9 {
-		items = append(items, fmt.Sprintf("%s ниже .. %s выше", paint(shadeColor[0], shades[0]),
-			paint(shadeColor[len(shades)-1], shades[len(shades)-1])))
+		bar := ""
+		for k := range shades {
+			bar += paint(shadeColor[k], shades[k])
+		}
+		items = append(items, paint(cHint, "ниже ")+bar+paint(cHint, " выше"))
 	}
 	return append(out, legend(items, w)...)
 }

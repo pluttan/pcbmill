@@ -88,7 +88,8 @@ func plainFrame(fr []string) string { return strip(strings.Join(fr, "\n")) }
 func centred(t *testing.T, what string, fr []string, w int, marker string) {
 	t.Helper()
 	top, bottom, left, right := -1, -1, w, w
-	for i, l := range fr[1 : len(fr)-1] { // no status line, no hint line
+	head := len(topLines("", w))
+	for i, l := range fr[head : len(fr)-1] { // no head bar and status line, no key bar
 		s := strings.TrimRight(strip(l), " ")
 		if s == "" {
 			continue
@@ -105,9 +106,9 @@ func centred(t *testing.T, what string, fr []string, w int, marker string) {
 			right = r
 		}
 	}
-	inner := len(fr) - 2
-	if d := top - (inner - 1 - bottom); d > 1 || d < -1 {
-		t.Errorf("%s: не по центру по высоте: сверху %d, снизу %d\n%s", what, top, inner-1-bottom, plainFrame(fr))
+	rows := len(fr) - head - 1
+	if d := top - (rows - 1 - bottom); d > 1 || d < -1 {
+		t.Errorf("%s: не по центру по высоте: сверху %d, снизу %d\n%s", what, top, rows-1-bottom, plainFrame(fr))
 	}
 	if d := left - right; d > 1 || d < -1 {
 		t.Errorf("%s: не по центру по ширине: слева %d, справа %d\n%s", what, left, right, plainFrame(fr))
@@ -265,7 +266,7 @@ func TestConfirm(t *testing.T) {
 			t.Errorf("%v: %v", c.keys, got)
 		}
 		all := plainFrame(f.frames[0])
-		if !strings.Contains(all, "[ Да ]") || !strings.Contains(all, "► Нет ◄") || !strings.Contains(all, "Меню") {
+		if !strings.Contains(all, "  Да   ") || !strings.Contains(all, "► Нет ◄") || !strings.Contains(all, "Меню") {
 			t.Fatalf("диалог не поверх меню:\n%s", all)
 		}
 		selected(t, f.frames[0], "► Нет ◄")

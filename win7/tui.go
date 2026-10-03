@@ -30,16 +30,20 @@ const (
 	cWhite
 )
 
-// What each colour means on screen.
+// What each colour means on screen. One rule for all screens: plain text in
+// the console's own grey, values white, units and hints dark grey, panel
+// frames dark grey with white titles, red only for a stop, yellow only for
+// contact, green only for "fine".
 const (
-	cFrame = cCyan       // frames and axes
-	cTitle = cWhite      // titles, values that matter
-	cKey   = cLightCyan  // keys the operator types
-	cHint  = cDark       // hints
-	cOK    = cLightGreen // done, fine
-	cAlarm = cLightRed   // stop, warning
-	cTouch = cYellow     // contact
-	cZero  = cLightMagenta
+	cFrame = cDark         // panel frames and map axes
+	cTitle = cWhite        // titles, values that matter
+	cKey   = cLightCyan    // keys named inside a text
+	cHint  = cDark         // hints, units
+	cOK    = cLightGreen   // done, fine
+	cAlarm = cLightRed     // stop, warning
+	cTouch = cYellow       // contact
+	cZero  = cLightMagenta // the first point, zero of Z
+	cCut   = cCyan         // the program cut on the table
 )
 
 // A colour mark inside a string is ESC and one byte: 'A'+colour, or '0' for the
@@ -57,14 +61,28 @@ func paint(c int, s string) string { return ink(c) + s + plain }
 // A background mark is ESC and 'a'+colour; '0' resets it too.
 func bgInk(c int) string { return string([]byte{esc, byte('a' + c)}) }
 
-// The selected line of a menu, a pressed button: dark text on a cyan bar.
+// on draws s in colour fg on background bg; marks inside s are dropped.
+func on(fg, bg int, s string) string { return bgInk(bg) + ink(fg) + strip(s) + plain }
+
+// The selected line of a menu, a chosen button: black on a cyan bar. The bars
+// at the top and bottom of the screen: black on grey.
 const (
 	cSelBg = cCyan
 	cSelFg = cBlack
+	cBarBg = cGray
+	cBarFg = cBlack
 )
 
 // hilite draws s as selected; colour marks inside s are dropped.
-func hilite(s string) string { return bgInk(cSelBg) + ink(cSelFg) + strip(s) + plain }
+func hilite(s string) string { return on(cSelFg, cSelBg, s) }
+
+// badge is a state in a coloured box: " ОК ", " КОНТАКТ ", " НЕТ СВЯЗИ ".
+func badge(fg, bg int, s string) string { return on(fg, bg, " "+s+" ") }
+
+func okBadge(s string) string    { return badge(cBlack, cLightGreen, s) }
+func touchBadge(s string) string { return badge(cBlack, cYellow, s) }
+func alarmBadge(s string) string { return badge(cWhite, cRed, s) }
+func offBadge(s string) string   { return badge(cWhite, cDark, s) }
 
 // ansiOf turns the colour marks into terminal escape codes.
 func ansiOf(s string) string {
@@ -216,13 +234,23 @@ func wrap(s string, w, hang int) []string {
 
 type frame struct{ tl, tr, bl, br, h, v, ml, mr string }
 
+// Panels have the thin frame, only dialogs over the screen the double one.
 var (
 	thin  = frame{"┌", "┐", "└", "┘", "─", "│", "├", "┤"}
 	thick = frame{"╔", "╗", "╚", "╝", "═", "║", "╟", "╢"}
 )
 
+// pad is the inner margin of every panel and dialog, left and right.
+const pad = 2
+
 // sep as a body line of a box draws a rule across it.
 const sep = "\x00sep"
+
+// selMark starts a body line drawn as the selection bar across the whole
+// inside of the box, margins included: sel(text).
+const selMark = "\x00sel"
+
+func sel(s string) string { return selMark + s }
 
 // box frames body lines, w wide in all; a title sits in the top edge. Lines too
 // long for the box are wrapped, so nothing sticks out of the frame.
@@ -230,43 +258,47 @@ func box(f frame, title string, body []string, w int) []string {
 	return boxC(f, cFrame, title, body, w)
 }
 
-// boxC is box with its frame in colour fc: red for a stop.
+// boxC is box with its frame in colour fc: red for a stop. A title with
+// colour marks of its own (a badge) is put in as it is.
 func boxC(f frame, fc int, title string, body []string, w int) []string {
-	cFrame := fc
-	if w < 8 {
-		w = 8
+	if w < 2*pad+6 {
+		w = 2*pad + 6
 	}
-	inner := w - 4
+	inner := w - 2 - 2*pad
 	var out []string
 	if title == "" {
-		out = append(out, paint(cFrame, f.tl+repeat(f.h, w-2)+f.tr))
+		out = append(out, paint(fc, f.tl+repeat(f.h, w-2)+f.tr))
 	} else {
 		t, _ := cutv(title, w-6)
-		out = append(out, paint(cFrame, f.tl+f.h)+" "+paint(cTitle, t)+" "+
-			paint(cFrame, repeat(f.h, w-5-vlen(t))+f.tr))
+		if strings.IndexByte(t, esc) < 0 {
+			t = paint(cTitle, " "+t+" ")
+		}
+		out = append(out, paint(fc, f.tl+f.h)+t+paint(fc, repeat(f.h, w-3-vlen(t))+f.tr))
 	}
+	side := paint(fc, f.v)
 	for _, l := range body {
-		if l == sep {
+		switch {
+		case l == sep:
 			mid := f.h
 			if f.h == "═" {
 				mid = "─"
 			}
-			out = append(out, paint(cFrame, f.ml+repeat(mid, w-2)+f.mr))
-			continue
-		}
-		for _, p := range wrap(l, inner, 2) {
-			out = append(out, paint(cFrame, f.v)+" "+padRight(p, inner)+" "+paint(cFrame, f.v))
+			out = append(out, paint(fc, f.ml+repeat(mid, w-2)+f.mr))
+		case strings.HasPrefix(l, selMark):
+			t, _ := cutv(l[len(selMark):], inner)
+			out = append(out, side+hilite(spaces(pad)+padRight(strip(t), inner)+spaces(pad))+side)
+		default:
+			for _, p := range wrap(l, inner, 2) {
+				out = append(out, side+spaces(pad)+padRight(p, inner)+spaces(pad)+side)
+			}
 		}
 	}
-	out = append(out, paint(cFrame, f.bl+repeat(f.h, w-2)+f.br))
+	out = append(out, paint(fc, f.bl+repeat(f.h, w-2)+f.br))
 	return out
 }
 
-// rule is a section heading: a double line with the title in it.
-func rule(title string, w int) []string {
-	t, _ := cutv(title, w-8)
-	return []string{paint(cFrame, "═══ ") + paint(cTitle, t) + " " + paint(cFrame, repeat("═", w-5-vlen(t)))}
-}
+// inner is the text width of a box w wide.
+func inner(w int) int { return w - 2 - 2*pad }
 
 // twoCols lays "key  what it does" pairs out in two columns, row by row, or in
 // one when a pair does not fit half the width.
@@ -317,16 +349,24 @@ func note(mark string, c int, label, text string, w int) []string {
 	return wrap(head+" "+text, w, 2)
 }
 
-// bar is a progress bar n wide for done of all.
+// bar is a progress bar n cells wide and the percent after it: always n+5 wide.
 func bar(done, all, n int) string {
-	k := n
+	k, pct := n, 100
 	if all > 0 {
-		k = done * n / all
+		k, pct = done*n/all, done*100/all
 	}
 	if k > n {
-		k = n
+		k, pct = n, 100
 	}
-	return paint(cOK, repeat("█", k)) + paint(cHint, repeat("░", n-k))
+	return paint(cOK, repeat("█", k)) + paint(cHint, repeat("░", n-k)) + paint(cTitle, fmt.Sprintf(" %3d%%", pct))
+}
+
+// val is a number in white with its unit in grey after it.
+func val(v, unit string) string {
+	if unit == "" {
+		return paint(cTitle, v)
+	}
+	return paint(cTitle, v) + " " + paint(cHint, unit)
 }
 
 // ==========================
@@ -342,6 +382,14 @@ const (
 	mcuDead
 )
 
+// SimInfo is the virtual machine in the status line: where NcStudio would
+// show the tool, and the faults switched on.
+type SimInfo struct {
+	X, Y, Z float64
+	Moving  bool
+	Faults  []string
+}
+
 type Status struct {
 	Port string
 	MCU  mcuState
@@ -349,35 +397,24 @@ type Status struct {
 	Z    float64
 	HasZ bool
 	More []string // more cells: manual mode steps
+	Sim  *SimInfo
 }
 
-// statusLine joins the cells with │ and breaks between cells when too long.
-func statusLine(st Status, w int) []string {
-	var cells []string
-	port := "МК"
-	if st.Port != "" {
-		port = "МК " + st.Port
-	}
-	switch st.MCU {
-	case mcuNone:
-		cells = append(cells, paint(cHint, "○")+" МК: порт не открыт")
+// mcuBadge is the MCU state alone: ОК, КОНТАКТ, НЕТ СВЯЗИ.
+func mcuBadge(s mcuState) string {
+	switch s {
 	case mcuOpen:
-		cells = append(cells, paint(cOK, "○")+" "+port+": "+paint(cOK, "разомкнуто"))
+		return okBadge("ОК")
 	case mcuContact:
-		cells = append(cells, paint(cTouch, "♦")+" "+port+": "+paint(cTouch, "КОНТАКТ"))
+		return touchBadge("КОНТАКТ")
 	case mcuDead:
-		cells = append(cells, paint(cAlarm, "■")+" "+port+": "+paint(cAlarm, "НЕ ОТВЕЧАЕТ"))
+		return alarmBadge("НЕТ СВЯЗИ")
 	}
-	if st.Nc {
-		cells = append(cells, paint(cOK, "√")+" NcStudio найдена")
-	} else {
-		cells = append(cells, paint(cHint, "○")+" NcStudio не найдена")
-	}
-	if st.HasZ {
-		cells = append(cells, "Z от старта "+paint(cTitle, fmt.Sprintf("%+.3f", st.Z)))
-	}
-	cells = append(cells, st.More...)
-	div := paint(cFrame, " │ ")
+	return offBadge("НЕ ОТКРЫТ")
+}
+
+// flow joins cells with three spaces and breaks between cells when too long.
+func flow(cells []string, w int) []string {
 	var out []string
 	cur := ""
 	for _, c := range cells {
@@ -385,18 +422,57 @@ func statusLine(st Status, w int) []string {
 		case cur == "":
 			cur = " " + c
 		case vlen(cur)+3+vlen(c) <= w:
-			cur += div + c
+			cur += "   " + c
 		default:
 			out = append(out, cur)
 			cur = " " + c
 		}
 	}
-	out = append(out, cur)
+	if cur != "" {
+		out = append(out, cur)
+	}
 	for i, l := range out {
 		if vlen(l) > w { // one cell wider than the screen
 			h, _ := cutv(l, w)
 			out[i] = h + plain
 		}
+	}
+	return out
+}
+
+// statusLine: the MCU and NcStudio as badges, then the values; in emulation a
+// second line with the virtual NcStudio coordinates and the faults.
+func statusLine(st Status, w int) []string {
+	mk := paint(cHint, "МК")
+	if st.Port != "" {
+		mk = paint(cHint, "МК "+st.Port)
+	}
+	nc := offBadge("НЕ НАЙДЕНА")
+	if st.Nc {
+		nc = okBadge("ОК")
+	}
+	cells := []string{mk + " " + mcuBadge(st.MCU), paint(cHint, "NcStudio") + " " + nc}
+	if st.HasZ {
+		cells = append(cells, paint(cHint, "Z от старта ")+val(fmt.Sprintf("%+.3f", st.Z), "мм"))
+	}
+	cells = append(cells, st.More...)
+	out := flow(cells, w)
+	if s := st.Sim; s != nil {
+		state := paint(cHint, "стоит")
+		if s.Moving {
+			state = paint(cTouch, "едет ")
+		}
+		pos := paint(cHint, "X") + paint(cTitle, fmt.Sprintf("%8.3f", s.X)) + paint(cHint, "  Y") +
+			paint(cTitle, fmt.Sprintf("%8.3f", s.Y)) + paint(cHint, "  Z") + paint(cTitle, fmt.Sprintf("%+8.3f", s.Z)) +
+			"  " + state
+		sim := []string{pos}
+		if len(s.Faults) == 0 {
+			sim = append(sim, paint(cHint, "сбоев нет, F2-F7"))
+		}
+		for _, f := range s.Faults {
+			sim = append(sim, alarmBadge(f))
+		}
+		out = append(out, flow(sim, w)...)
 	}
 	return out
 }

@@ -7,7 +7,6 @@ package main
 import (
 	"os"
 	"os/signal"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -24,6 +23,10 @@ type Term interface {
 }
 
 var term Term = &conTerm{}
+
+// keyHook sees every key of the console before the screens do; true: the key
+// was used up (the fault keys of the emulation work on any screen, in a scan too).
+var keyHook func(Key) bool
 
 // ==========================
 // ===  The real console  ===
@@ -45,7 +48,20 @@ func (t *conTerm) start() {
 	}
 	t.started = true
 	t.keys = make(chan Key, 64)
-	conStart(t.keys)
+	raw := make(chan Key, 64)
+	conStart(raw)
+	go func() {
+		for k := range raw {
+			if keyHook != nil && keyHook(k) {
+				select { // an empty key wakes the screen up to show the change
+				case t.keys <- Key{}:
+				default:
+				}
+				continue
+			}
+			t.keys <- k
+		}
+	}()
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 	go func() {
@@ -171,23 +187,45 @@ func blockWidth(lines []string) int {
 	return w
 }
 
-// screen lays a frame out: the status line on top, the key hints at the
-// bottom, the body centred both ways in between. A body too tall loses its
-// last lines, one too wide is cut: the frame never exceeds w x h.
-func screen(w, h int, body []string, hint string) []string {
-	var top []string
-	if statusFn != nil {
-		for _, l := range statusLine(statusFn(), w) {
-			top = append(top, center(l, w))
-		}
+// headBar is the top line of every screen: the program, the screen, and in
+// emulation a yellow mark at the right end.
+func headBar(title string, w int) string {
+	right := ""
+	if simM != nil {
+		right = badge(cBlack, cYellow, "ЭМУЛЯЦИЯ") + on(cBarFg, cBarBg, " ")
 	}
+	left := on(cBarFg, cBarBg, " pcbscan ")
+	if title != "" {
+		left += on(cDark, cBarBg, "│") + on(cBarFg, cBarBg, " "+title+" ")
+	}
+	if n := w - vlen(right); vlen(left) > n {
+		left, _ = cutv(left, n)
+		left += plain
+	}
+	return left + on(cBarFg, cBarBg, spaces(w-vlen(left)-vlen(right))) + right
+}
+
+// topLines: the head bar and the status line under it.
+func topLines(title string, w int) []string {
+	top := []string{headBar(title, w)}
+	if statusFn != nil {
+		top = append(top, statusLine(statusFn(), w)...)
+	}
+	return top
+}
+
+// screen lays a frame out: the head bar and the status line on top, the key
+// bar at the bottom, the body centred both ways in between. A body too tall
+// loses its last lines, one too wide is cut: the frame never exceeds w x h.
+func screen(w, h int, title string, body []string, hint string) []string {
+	top := topLines(title, w)
 	bottom := []string{}
 	if hint != "" {
-		bottom = append(bottom, center(hint, w))
+		bottom = append(bottom, hint)
 	}
 	room := h - len(top) - len(bottom)
 	if room < 1 {
-		top, room = nil, h-len(bottom)
+		top, room = top[:1], h-1-len(bottom)
 	}
 	if len(body) > room {
 		body = body[:room]
@@ -215,24 +253,31 @@ func screen(w, h int, body []string, hint string) []string {
 	return append(out, bottom...)
 }
 
-// hints: "key what" pairs joined in one line; the last pairs go when too long.
+// hints is the key bar at the bottom, the whole width: every key a button
+// (white on black) with what it does after it; the last pairs go when too long.
+// A pair with no key is a note.
 func hints(w int, pairs ...string) string {
 	for n := len(pairs) / 2; n > 0; n-- {
-		var parts []string
+		s := on(cBarFg, cBarBg, " ")
 		for i := 0; i < n; i++ {
-			parts = append(parts, paint(cKey, pairs[2*i])+" "+paint(cHint, pairs[2*i+1]))
+			if pairs[2*i] != "" {
+				s += on(cWhite, cBlack, " "+pairs[2*i]+" ") + on(cBarFg, cBarBg, " ")
+			}
+			s += on(cBarFg, cBarBg, pairs[2*i+1]+"   ")
 		}
-		s := strings.Join(parts, "   ")
 		if vlen(s) <= w {
-			return s
+			return s + on(cBarFg, cBarBg, spaces(w-vlen(s)))
 		}
 	}
-	return ""
+	return on(cBarFg, cBarBg, spaces(w))
 }
 
 // stack joins blocks top to bottom, each centred on the widest, with an empty
 // line between them.
-func stack(blocks ...[]string) []string {
+func stack(blocks ...[]string) []string { return stackGap(1, blocks...) }
+
+// stackGap is stack with gap empty lines between the blocks.
+func stackGap(gap int, blocks ...[]string) []string {
 	var all []string
 	for _, b := range blocks {
 		all = append(all, b...)
@@ -243,7 +288,7 @@ func stack(blocks ...[]string) []string {
 		if len(b) == 0 {
 			continue
 		}
-		if i > 0 && len(out) > 0 {
+		for k := 0; i > 0 && len(out) > 0 && k < gap; k++ {
 			out = append(out, "")
 		}
 		bw := blockWidth(b)
@@ -299,27 +344,43 @@ func inkAt(s string, n int) string {
 	return fg + bgm
 }
 
-// overlay draws a box over the middle of a frame: dialogs keep the screen
-// they were opened from visible around them.
+// putAt draws s over line l from visible column x on; the colour after it is
+// what l had there.
+func putAt(l string, x int, s string) string {
+	head, rest := cutv(l, x)
+	_, tail := cutv(rest, vlen(s))
+	return head + plain + s + plain + inkAt(l, x+vlen(s)) + tail
+}
+
+// overlay draws a dialog over the middle of a frame: the screen it was opened
+// from stays around it, dimmed, and the dialog drops a shadow on it, two
+// cells to the right and one down (a cell is twice as high as it is wide).
 func overlay(base, box []string, w, h int) []string {
 	out := fit(base, w, h)
+	for r := 1; r < h; r++ { // the head bar stays as it is
+		out[r] = paint(cDark, strip(out[r]))
+	}
 	bw := blockWidth(box)
-	x, y := (w-bw)/2, (h-len(box))/2
+	x, y := (w-bw-2)/2, (h-len(box)-1)/2
 	if x < 0 {
 		x = 0
 	}
-	if y < 0 {
-		y = 0
+	if y < 1 {
+		y = 1
 	}
+	shade := paint(cDark, "░░")
 	for i, l := range box {
 		r := y + i
 		if r >= h {
 			break
 		}
-		l = padRight(l, bw)
-		head, rest := cutv(out[r], x)
-		_, tail := cutv(rest, bw)
-		out[r] = head + plain + l + plain + inkAt(out[r], x+bw) + tail
+		out[r] = putAt(out[r], x, padRight(l, bw))
+		if i > 0 && x+bw+2 <= w {
+			out[r] = putAt(out[r], x+bw, shade)
+		}
+	}
+	if r := y + len(box); r < h && x+bw+2 <= w {
+		out[r] = putAt(out[r], x+2, paint(cDark, repeat("░", bw)))
 	}
 	return out
 }
@@ -349,7 +410,7 @@ func run(view func(w, h int) []string, handle func(Key) bool, tick time.Duration
 	for {
 		draw(view)
 		k, ok := term.Key(wait)
-		if !ok || k.Code == KeyResize {
+		if !ok || k.Code == KeyResize || k.Code == KeyNone {
 			continue
 		}
 		if handle(k) {

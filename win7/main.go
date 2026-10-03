@@ -14,6 +14,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -257,13 +258,21 @@ type opts struct {
 	port, mdiKey, title string
 	grid, clear, search float64
 	below               float64
-	keep, nolayout      bool
+	keep, nolayout, sim bool
+	simSpeed            float64
 	step, fine          float64
 	rapid               float64
 	settle              int
 }
 
 func newNc(o opts) *NcStudio {
+	if simM != nil {
+		n := NewNcStudio(simM)
+		n.Rapid, n.Sleep = o.rapid, simM.sleep
+		n.Settle = time.Duration(o.settle) * time.Millisecond
+		n.Reopen = !o.keep
+		return n
+	}
 	n := NewNcStudio(&WinKeys{Title: o.title, MDIKey: o.mdiKey, Delay: 5 * time.Millisecond})
 	n.Rapid = o.rapid
 	n.Settle = time.Duration(o.settle) * time.Millisecond
@@ -288,6 +297,9 @@ var (
 // statusCached: the wire check redraws 25 times a second, looking for the
 // NcStudio window that often is pointless.
 func statusCached(o opts) Status {
+	if simM != nil { // nothing to look for: the emulation answers at once
+		return status(o)
+	}
 	statusMu.Lock()
 	defer statusMu.Unlock()
 	if time.Since(statusAt) > 300*time.Millisecond {
@@ -298,6 +310,9 @@ func statusCached(o opts) Status {
 
 // status is what the status line of every screen shows.
 func status(o opts) Status {
+	if simM != nil {
+		return simStatus()
+	}
 	var m Touch
 	if mcuCache != nil { // a nil *MCU in the interface would not be nil
 		m = mcuCache
@@ -311,6 +326,7 @@ func status(o opts) Status {
 
 var commands = map[string]func(opts) error{
 	"1": cmdWire, "2": cmdNcTest, "3": cmdScan, "4": cmdZero, "5": cmdLevel, "6": cmdManual, "7": cmdFindCoords,
+	"8": cmdSim,
 }
 
 func main() {
@@ -328,12 +344,17 @@ func main() {
 	flag.Float64Var(&o.rapid, "rapid", 1500, "скорость G00 в NcStudio, мм/мин")
 	flag.IntVar(&o.settle, "settle", 350, "пауза на каждую команду, мс")
 	flag.BoolVar(&o.nolayout, "nolayout", false, "не ставить NcStudio на левую половину экрана, а pcbscan на правую")
+	flag.BoolVar(&o.sim, "sim", runtime.GOOS != "windows", "эмуляция станка и МК: всё меню без станка (на Windows по ключу)")
+	flag.Float64Var(&o.simSpeed, "simspeed", 5, "эмуляция: во сколько раз быстрее настоящего станка (1 - как есть)")
 	flag.Parse()
+	if o.sim {
+		startSim(o)
+	}
 	if err := ValidKeys(o.mdiKey); err != nil {
 		say("ОСТАНОВ: %v\n", err)
 		os.Exit(2)
 	}
-	if !o.nolayout {
+	if !o.nolayout && !o.sim {
 		layoutWindows(o.title)
 	}
 	ct := term.(*conTerm)
@@ -346,9 +367,9 @@ func main() {
 		}
 	}()
 	statusFn = func() Status { return statusCached(o) }
-	nav := newMenuNav(mainMenu)
+	nav := newMenuNav(menuItems())
 	for {
-		cur = nil
+		cur, curHead = nil, ""
 		switch c := menuChoice(nav); c {
 		case "quit":
 			return
@@ -357,6 +378,7 @@ func main() {
 				return
 			}
 		default:
+			curHead = menuTitle(c)
 			if err := commands[c](o); err != nil && err != errBack {
 				alert(err)
 			}

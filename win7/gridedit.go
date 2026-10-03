@@ -253,32 +253,37 @@ func (f *gridForm) key(k Key) (bool, bool) {
 	return false, false
 }
 
-const formW = 34
+const formW = 36
 
-func (f *gridForm) form() []string {
-	in := formW - 4
+// form: the fields with their values right-aligned and the units in grey, the
+// chosen one on the selection bar with arrows round its value; the buttons
+// under a rule.
+func (f *gridForm) form() []string { return f.formOf(true) }
+
+// formOf: with rules false the form is two lines lower, for low windows.
+func (f *gridForm) formOf(rules bool) []string {
+	in := inner(formW)
 	var body []string
 	for i := 0; i < gfCount; i++ {
-		if i == gfSX || i == gfStart {
+		if rules && (i == gfSX || i == gfStart) {
 			body = append(body, sep)
 		}
 		if i >= gfStart {
-			b := "[ " + gridLabels[i] + " ]"
 			if i == f.sel {
-				body = append(body, center(hilite("► "+gridLabels[i]+" ◄"), in))
+				body = append(body, sel(center("► "+gridLabels[i]+" ◄", in)))
 			} else {
-				body = append(body, center(b, in))
+				body = append(body, center(paint(cTitle, gridLabels[i]), in))
 			}
 			continue
 		}
 		lab := padRight(gridLabels[i], 14)
 		switch {
 		case i == f.sel && f.edit != nil:
-			body = append(body, lab+" "+f.edit.view(9)+"  "+unit(i))
+			body = append(body, lab+" "+f.edit.view(9)+" "+paint(cHint, unit(i)))
 		case i == f.sel:
-			body = append(body, hilite(padRight(lab+"◄ "+fmt.Sprintf("%8s", f.value(i))+" ► "+unit(i), in)))
+			body = append(body, sel(lab+"◄"+fmt.Sprintf("%8s", f.value(i))+" ► "+unit(i)))
 		default:
-			body = append(body, lab+"  "+paint(cTitle, fmt.Sprintf("%8s", f.value(i)))+"   "+paint(cHint, unit(i)))
+			body = append(body, lab+" "+paint(cTitle, fmt.Sprintf("%8s", f.value(i)))+"   "+paint(cHint, unit(i)))
 		}
 	}
 	return box(thin, "Сетка карты высот", body, formW)
@@ -289,9 +294,9 @@ func (f *gridForm) summary(w int) []string {
 	g := f.g
 	n := g.NX * g.NY
 	out := []string{
-		fmt.Sprintf("точек %s x %s = %s   шаг %.2f x %.2f мм   ~%s мин",
-			paint(cTitle, strconv.Itoa(g.NX)), paint(cTitle, strconv.Itoa(g.NY)), paint(cTitle, strconv.Itoa(n)),
-			g.StepX(), g.StepY(), paint(cTitle, fmt.Sprintf("%.0f", float64(n)*secondsPerPoint/60))),
+		paint(cHint, "точек ") + paint(cTitle, fmt.Sprintf("%d x %d = %d", g.NX, g.NY, n)) +
+			paint(cHint, "   шаг ") + val(fmt.Sprintf("%.2f x %.2f", g.StepX(), g.StepY()), "мм") +
+			paint(cHint, "   ~") + val(fmt.Sprintf("%.0f", float64(n)*secondsPerPoint/60), "мин"),
 	}
 	p := f.prog
 	if g.X0 > p.X0+1e-6 || g.X1 < p.X1-1e-6 || g.Y0 > p.Y0+1e-6 || g.Y1 < p.Y1-1e-6 {
@@ -313,30 +318,29 @@ func (f *gridForm) summary(w int) []string {
 func (f *gridForm) view(w, h int) []string {
 	cut := rect{f.prog.X0, f.prog.X1, f.prog.Y0, f.prog.Y1}
 	rows := room(w, h)
-	head := func(b []string) []string { return rule("3 ► Сетка карты высот", blockWidth(b)) }
 	form := f.form()
 	sum := f.summary(colW(w))
 	var body []string
-	if w >= formW+2+34 { // the table next to the form
-		pw := w - formW - 2
+	if w >= formW+3+34 { // the table next to the form
+		pw := w - formW - 3
 		if pw > 76 {
 			pw = 76
 		}
 		pic := fitRows(rows-len(sum)-4, func(r int) []string { return gridViewRows(f.g, &cut, pw, r) })
-		b := beside(form, pic, 2)
-		body = stack(head(b), b, sum)
+		body = stack(beside(form, pic, 3), sum)
 	} else { // under it, when there is room
-		b := stack(form, sum)
-		body = stack(head(b), b)
+		if body = stack(form, sum); len(body) > rows {
+			body = stackGap(0, f.formOf(false), sum)
+		}
 		if pic := fitRows(rows-len(body)-1, func(r int) []string { return gridViewRows(f.g, &cut, w, r) }); pic != nil {
-			body = stack(head(b), b, pic)
+			body = stack(form, sum, pic)
 		}
 	}
 	hint := hints(w, "↑↓", "поле", "← →", "меньше / больше", "Enter", "ввести число", "Esc", "отмена")
 	if f.edit != nil {
 		hint = hints(w, "Enter", "принять", "Esc", "отменить", "← →", "по числу")
 	}
-	return screen(w, h, body, hint)
+	return screen(w, h, curHead, body, hint)
 }
 
 // editGrid lets the operator change the map layout before the scan; false = cancelled.

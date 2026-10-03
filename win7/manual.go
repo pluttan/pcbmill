@@ -336,16 +336,17 @@ func (s *manual) run(c string) bool {
 	return more
 }
 
+// contact is the MCU state as a badge with a word on what it means.
 func (s *manual) contact() string {
 	switch {
 	case s.m == nil:
-		return paint(cHint, "○ МК не подключён: касание не видно")
+		return offBadge("МК НЕ ПОДКЛЮЧЁН") + paint(cHint, "  касание не видно")
 	case s.m.Alive() != nil:
-		return paint(cAlarm, "■ МК НЕ ОТВЕЧАЕТ")
+		return alarmBadge("МК НЕ ОТВЕЧАЕТ") + paint(cHint, "  двигать можно только вверх")
 	case s.m.State():
-		return paint(cTouch, "♦ КОНТАКТ: фреза на меди")
+		return touchBadge("♦ КОНТАКТ") + paint(cHint, "  фреза на меди: вниз и вбок нельзя")
 	}
-	return paint(cOK, "○ разомкнуто")
+	return okBadge("○ разомкнуто")
 }
 
 func (s *manual) keys() [][2]string {
@@ -365,32 +366,36 @@ func (s *manual) keys() [][2]string {
 
 func (s *manual) view(w, h int) []string {
 	bw := colW(w)
-	st := []string{
-		s.contact(),
-		fmt.Sprintf("Z от старта %s   шаг Z %s   быстрый %s   X %s   Y %s",
-			paint(cTitle, fmt.Sprintf("%+.3f", s.nc.z)), paint(cTitle, num(s.step)),
-			paint(cTitle, num(s.stepFast)), paint(cTitle, num(s.stepX)), paint(cTitle, num(s.stepY))),
+	st := []string{s.contact()}
+	for _, l := range flow([]string{
+		paint(cHint, "Z от старта") + paint(cTitle, fmt.Sprintf("%+9.3f", s.nc.z)) + paint(cHint, " мм"),
+		paint(cHint, "шаг Z ") + val(num(s.step), ""),
+		paint(cHint, "быстрый ") + val(num(s.stepFast), ""),
+		paint(cHint, "X/Y ") + val(num(s.stepX)+" / "+num(s.stepY), "мм"),
+	}, inner(bw)+1) {
+		st = append(st, l[1:]) // flow starts every line with a space
 	}
 	if s.busy != "" {
 		st = append(st, paint(cKey, "► в NcStudio: "+s.busy)+paint(cHint, "  мышь и клавиатуру не трогать"))
+	} else {
+		st = append(st, paint(cAlarm, "▲ СТОП:")+paint(cHint, " щелчок мышью по другому окну во время движения"))
 	}
-	state := box(thick, "Состояние", st, bw)
-	keys := box(thin, "Клавиши, без Enter", twoCols(s.keys(), bw-4), bw)
-	stop := note("▲", cAlarm, "СТОП:", "щелчок мышью по другому окну во время движения.", bw)
+	state := box(thin, "Станок", st, bw)
+	keys := box(thin, "Клавиши, без Enter", twoCols(s.keys(), inner(bw)), bw)
 	var cmd []string
 	if s.cmd != nil {
-		cmd = box(thin, "Команда", []string{paint(cKey, ": ") + s.cmd.view(bw-8)}, bw)
+		cmd = box(thin, "Команда", []string{paint(cKey, ": ") + s.cmd.view(inner(bw)-2)}, bw)
 	}
-	used := len(state) + len(keys) + len(stop) + len(cmd) + 5
+	used := len(state) + len(keys) + len(cmd) + 3
 	rows := room(w, h)
-	n := rows - used - 2
+	n := rows - used - 4 // the journal frame and a free line above and under
 	if n > 8 {
 		n = 8
 	}
 	s.p.mu.Lock()
 	var ls []string
 	for _, l := range s.p.log {
-		ls = append(ls, wrap(l, bw-4, 2)...)
+		ls = append(ls, wrap(l, inner(bw), 2)...)
 	}
 	s.p.mu.Unlock()
 	if n < 1 {
@@ -402,19 +407,16 @@ func (s *manual) view(w, h int) []string {
 	for len(ls) < n {
 		ls = append(ls, "")
 	}
-	head, journal := rule(menuTitle("6"), bw), box(thin, "Журнал", ls, bw)
-	body := stack(head, state, keys, stop, journal, cmd)
-	if len(body) > rows { // a low window: the warning goes first, then the key list
-		body = stack(head, state, keys, journal, cmd)
-	}
-	if len(body) > rows {
-		body = stack(head, state, journal, cmd)
+	journal := box(thin, "Журнал", ls, bw)
+	body := stack(state, keys, journal, cmd)
+	if len(body) > rows { // a low window: the key list goes first
+		body = stack(state, journal, cmd)
 	}
 	hint := hints(w, "Esc", "в меню", ": Tab", "команда", "PageUp", "вверх")
 	if s.cmd != nil {
 		hint = hints(w, "Enter", "выполнить", "Esc", "закрыть строку")
 	}
-	return screen(w, h, body, hint)
+	return screen(w, h, menuTitle("6"), body, hint)
 }
 
 // cmdManual: the operator drives NcStudio through this program step by step,
@@ -424,7 +426,7 @@ func cmdManual(o opts) error {
 	var name string
 	if confirm("Подключить МК (показывать касание)?", "Без МК нельзя опустить до меди (T), а касание не видно.") {
 		newPage(menuTitle("6"), "Ищу МК на COM-портах...")
-		mc, n, err := findMCU(o.port)
+		mc, n, err := findTouch(o.port)
 		if err != nil {
 			return err
 		}
@@ -434,7 +436,7 @@ func cmdManual(o opts) error {
 	cur = s.p
 	s.p.add(paint(cHint, "Пока команда печатается в NcStudio, мышь и клавиатуру не трогать."))
 	if name != "" {
-		sayOK("МК на " + name)
+		sayOK(strip(mcuAt(name)))
 	}
 	term.Flush()
 	run(s.view, s.keyDone, 200*time.Millisecond)

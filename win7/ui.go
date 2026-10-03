@@ -21,10 +21,7 @@ func colW(w int) int {
 // room is how many rows the body of a screen gets between the status line and
 // the hint line.
 func room(w, h int) int {
-	n := h - 1
-	if statusFn != nil {
-		n -= len(statusLine(statusFn(), w))
-	}
+	n := h - 1 - len(topLines("", w))
 	if n < 3 {
 		n = 3
 	}
@@ -84,41 +81,47 @@ func (d *dialog) key(k Key) (int, bool) {
 	return 0, false
 }
 
-// box: as wide as the text needs, 34 to 64 columns; short text is centred.
+// box: as wide as the text needs, 36 to 64 columns, short text centred; an
+// empty line above and under the text, the buttons all of one width.
 func (d *dialog) box(w int) []string {
-	bw := blockWidth(d.text) + 8
-	if bw < 34 {
-		bw = 34
+	bw := blockWidth(d.text) + 2 + 2*pad + 4
+	if bw < 36 {
+		bw = 36
 	}
 	if bw > 64 {
 		bw = 64
 	}
-	if bw > w {
-		bw = w
+	if bw > w-2 { // room for the shadow
+		bw = w - 2
 	}
-	var body []string
-	body = append(body, "")
+	in := inner(bw)
+	body := []string{""}
 	for _, l := range d.text {
-		if vlen(l) <= bw-4 {
-			l = center(l, bw-4)
+		if vlen(l) <= in {
+			l = center(l, in)
 		}
 		body = append(body, l)
 	}
 	body = append(body, "")
+	bwid := 0
+	for _, b := range d.buttons {
+		if n := vlen(b); n > bwid {
+			bwid = n
+		}
+	}
 	var bs []string
 	for i, b := range d.buttons {
 		if i == d.sel { // the arrows show the choice without colours too
-			bs = append(bs, hilite("► "+b+" ◄"))
+			bs = append(bs, hilite("► "+center(b, bwid)+" ◄"))
 		} else {
-			bs = append(bs, "[ "+b+" ]")
+			bs = append(bs, on(cWhite, cDark, "  "+center(b, bwid)+"  "))
 		}
 	}
-	body = append(body, center(strings.Join(bs, "   "), bw-4))
-	title, fc := d.title, cKey
+	body = append(body, center(strings.Join(bs, "   "), in), "")
 	if d.alarm {
-		title, fc = paint(cAlarm, d.title), cAlarm
+		return boxC(thick, cAlarm, alarmBadge(d.title), body, bw)
 	}
-	return boxC(thick, fc, title, body, bw)
+	return boxC(thick, cWhite, d.title, body, bw)
 }
 
 func (d *dialog) hint(w int) string {
@@ -135,10 +138,10 @@ func (d *dialog) show() int {
 	view := func(w, h int) []string {
 		b := d.box(w)
 		if base == nil {
-			return screen(w, h, b, d.hint(w))
+			return screen(w, h, curHead, b, d.hint(w))
 		}
 		fr := overlay(base(w, h), b, w, h)
-		fr[h-1] = center(d.hint(w), w)
+		fr[h-1] = d.hint(w)
 		return fr
 	}
 	res := 0
@@ -235,17 +238,17 @@ func (l *listNav) view(w, h int) []string {
 	}
 	var body []string
 	for i := top; i < len(l.items) && i < top+rows; i++ {
-		num := "  "
+		num := " "
 		if i < 9 {
-			num = string(rune('1'+i)) + " "
+			num = string(rune('1' + i))
 		}
 		if i == l.sel {
-			body = append(body, hilite(padRight(" ► "+num+"  "+l.items[i], bw-4)))
+			body = append(body, sel("► "+num+"   "+l.items[i]))
 		} else {
-			body = append(body, "   "+paint(cKey, num)+"  "+l.items[i])
+			body = append(body, "  "+paint(cKey, num)+"   "+l.items[i])
 		}
 	}
-	return screen(w, h, box(thin, l.title, body, bw),
+	return screen(w, h, curHead, box(thin, l.title, body, bw),
 		hints(w, "↑↓", "выбор", "Enter", "взять", "Esc", "назад"))
 }
 
@@ -270,6 +273,7 @@ func pick(title string, items []string) (int, bool) {
 type page struct {
 	mu    sync.Mutex
 	title string
+	head  string // the title of the info panel
 	info  []string
 	pic   func(w, h int) []string
 	log   []string
@@ -283,9 +287,12 @@ type page struct {
 // cur is the page messages go to.
 var cur *page
 
+// curHead is the name of the screen in the head bar: the command running.
+var curHead string
+
 func newPage(title string, info ...string) *page {
 	p := &page{title: title, info: info}
-	cur = p
+	cur, curHead = p, title
 	backdrop = p.view
 	p.draw()
 	return p
@@ -321,10 +328,10 @@ func (p *page) view(w, h int) []string {
 	defer p.mu.Unlock()
 	bw := colW(w)
 	left := room(w, h)
-	blocks := [][]string{rule(p.title, bw)}
-	used := 1
+	var blocks [][]string
+	used := 0
 	if len(p.info) > 0 {
-		b := box(thin, "", p.info, bw)
+		b := box(thin, p.head, p.info, bw)
 		blocks = append(blocks, b)
 		used += len(b) + 1
 	}
@@ -353,7 +360,7 @@ func (p *page) view(w, h int) []string {
 	if n := left - used - 3; n >= 1 && len(p.log) > 0 && !p.nolog {
 		var ls []string
 		for _, l := range p.log {
-			ls = append(ls, wrap(l, bw-4, 2)...)
+			ls = append(ls, wrap(l, inner(bw), 2)...)
 		}
 		if len(ls) > n {
 			ls = ls[len(ls)-n:]
@@ -361,13 +368,13 @@ func (p *page) view(w, h int) []string {
 		for len(ls) < n && len(ls) < 8 {
 			ls = append(ls, "")
 		}
-		blocks = append(blocks, box(thin, "Ход работы", ls, bw))
+		blocks = append(blocks, box(thin, "Журнал", ls, bw))
 	}
 	keys := p.keys
 	if keys == nil {
 		keys = []string{"", paint(cHint, "идёт работа: мышь и клавиатуру не трогать")}
 	}
-	return screen(w, h, stack(blocks...), hints(w, keys...))
+	return screen(w, h, p.title, stack(blocks...), hints(w, keys...))
 }
 
 // wait leaves the page on screen until Enter or Esc.

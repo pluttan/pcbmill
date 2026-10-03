@@ -29,6 +29,19 @@ var mainMenu = []menuEntry{
 	{"0", "Выход", "Закрыть pcbscan. NcStudio остаётся как есть."},
 }
 
+// simEntry is the menu item of the emulation, there only when it is on.
+var simEntry = menuEntry{"8", "Эмуляция: станок и неисправности",
+	"Виртуальный станок: где фреза, и неисправности для проверки защит (их же включают F2-F7)."}
+
+// menuItems is the main menu; in emulation one more item at the end.
+func menuItems() []menuEntry {
+	if simM == nil {
+		return mainMenu
+	}
+	items := append([]menuEntry(nil), mainMenu[:len(mainMenu)-1]...)
+	return append(items, simEntry, menuEntry{"", "", ""}, mainMenu[len(mainMenu)-1])
+}
+
 // menuNav walks the items with the arrows; rules are skipped, the ends wrap.
 type menuNav struct {
 	items []menuEntry
@@ -83,22 +96,21 @@ func (m *menuNav) key(k Key) (string, bool) {
 	return "", false
 }
 
-// logo is the head of the main screen; the short one for low windows.
+// logo is the name over the menu; the short one for low windows.
 func logo(w int, short bool) []string {
 	if short {
-		return []string{center(paint(cTitle, "pcbscan")+paint(cFrame, "  ►  ")+"карта высот для NcStudio", w)}
+		return []string{center(paint(cTitle, "pcbscan")+paint(cHint, "  карта высот для NcStudio"), w)}
 	}
-	return box(thick, "", []string{
-		center(paint(cTitle, "p c b s c a n"), w-4),
-		center("карта высот платы для NcStudio", w-4),
-		center(paint(cHint, "касание фрезы о медь · МК на COM · команды в окно NcStudio"), w-4),
-	}, w)
+	return []string{
+		center(paint(cTitle, "p c b s c a n"), w),
+		center(paint(cHint, "карта высот платы для NcStudio"), w),
+	}
 }
 
 func (m *menuNav) view(w, h int) []string {
 	bw := colW(w)
-	if bw > 64 {
-		bw = 64
+	if bw > 60 {
+		bw = 60
 	}
 	rows := room(w, h)
 	var body []string
@@ -112,9 +124,9 @@ func (m *menuNav) view(w, h int) []string {
 				continue
 			}
 			if i == m.sel {
-				lines = append(lines, hilite(padRight(" ► "+it.key+"   "+it.text, bw-4)))
+				lines = append(lines, sel("► "+it.key+"   "+it.text))
 			} else {
-				lines = append(lines, "   "+paint(cKey, it.key)+"   "+it.text)
+				lines = append(lines, "  "+paint(cKey, it.key)+"   "+it.text)
 			}
 		}
 		about := wrap(m.items[m.sel].about, bw-4, 0)
@@ -130,16 +142,23 @@ func (m *menuNav) view(w, h int) []string {
 		menu := box(thin, "Меню", lines, bw)
 		for _, short := range []bool{false, true} {
 			body = stack(logo(bw, short), menu, about)
-			if len(body) <= rows {
-				return screen(w, h, body, menuHint(w))
+			if len(body) <= rows-2 { // a free line above and under at least
+				return screen(w, h, "главное меню", body, menuHint(w, len(m.items)))
 			}
 		}
+		if body = stack(menu, about); len(body) <= rows {
+			return screen(w, h, "главное меню", body, menuHint(w, len(m.items)))
+		}
 	}
-	return screen(w, h, body, menuHint(w))
+	return screen(w, h, "главное меню", body, menuHint(w, len(m.items)))
 }
 
-func menuHint(w int) string {
-	return hints(w, "↑↓", "выбор", "Enter", "открыть", "1-7", "сразу", "Esc", "выход")
+func menuHint(w, n int) string {
+	last := "7"
+	if n > 0 && simM != nil {
+		last = "8"
+	}
+	return hints(w, "↑↓", "выбор", "Enter", "открыть", "1-"+last, "сразу", "Esc", "выход")
 }
 
 // menuChoice runs the main menu until an item is chosen; the status line is
@@ -156,9 +175,9 @@ func menuChoice(m *menuNav) string {
 
 // menuTitle is the heading of a command's page: "3 ► Снять карту высот".
 func menuTitle(key string) string {
-	for _, it := range mainMenu {
+	for _, it := range menuItems() {
 		if it.key == key {
-			return key + " ► " + it.text
+			return key + "  " + it.text
 		}
 	}
 	return key

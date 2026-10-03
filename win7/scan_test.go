@@ -2,87 +2,17 @@ package main
 
 import (
 	"math"
-	"regexp"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
 )
-
-// simMachine executes typed MDI lines instantly; Z is relative to start like on the real machine.
-type simMachine struct {
-	x, y, z  float64 // z: real tip height in the board frame
-	maxDig   float64
-	hits     int
-	state    bool
-	surface  func(x, y float64) float64
-	lines    []string
-	dropIf   func(string) bool
-	broken   bool
-	dieAfter int     // MCU goes silent after this many lines (0: never)
-	relErr   float64 // NcStudio rounding: every relative Z move lands this much off
-	mechUp   float64 // the Z axis itself creeps up by this much per command
-	offset   float64 // work Z0 in the board frame (G90 targets are relative to it)
-}
-
-var reAx = regexp.MustCompile(`([XYZ])(-?[\d.]+)`)
-
-func (s *simMachine) OpenMDI() error { return nil }
-func (s *simMachine) Grab() error    { return nil }
-
-func (s *simMachine) Line(l string) error {
-	s.lines = append(s.lines, l)
-	if s.dropIf != nil && s.dropIf(l) {
-		s.dropIf = nil
-		return nil
-	}
-	rel := strings.Contains(l, "G91")
-	if rel && strings.Contains(l, "Z") {
-		s.z += s.relErr
-	}
-	// a creeping axis moves the machine's own idea of zero, under any command style
-	s.offset += s.mechUp
-	s.z += s.mechUp
-	for _, m := range reAx.FindAllStringSubmatch(l, -1) {
-		v, _ := strconv.ParseFloat(m[2], 64)
-		switch m[1] {
-		case "X":
-			s.x = v
-		case "Y":
-			s.y = v
-		case "Z":
-			if rel {
-				s.z += v
-			} else {
-				s.z = v + s.offset
-			}
-		}
-	}
-	surf := s.surface(s.x, s.y)
-	s.maxDig = math.Max(s.maxDig, surf-s.z)
-	c := s.z <= surf && !s.broken
-	if c && !s.state {
-		s.hits++
-	}
-	s.state = c
-	return nil
-}
-
-func (s *simMachine) State() bool { return s.state }
-func (s *simMachine) Alive() error {
-	if s.dieAfter > 0 && len(s.lines) >= s.dieAfter {
-		return ScanError{"МК не отвечает"}
-	}
-	return nil
-}
-func (s *simMachine) Hits() int { return s.hits }
 
 func warped(x, y float64) float64 {
 	return 0.003*x - 0.002*y + 0.15*math.Sin(x/70*3.1)*math.Sin(y/60*3.1) - 1.5
 }
 
 func setup() (*simMachine, *NcStudio, *Scanner) {
-	sm := &simMachine{surface: warped}
+	sm := newSimMachine(warped)
 	nc := NewNcStudio(sm)
 	nc.Sleep = func(time.Duration) {}
 	return sm, nc, NewScanner(nc, sm)

@@ -10,3 +10,4 @@ cnc/
 /selftest/
 scan*.csv
 /win7/*.exe
+/win7/mac/

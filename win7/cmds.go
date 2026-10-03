@@ -14,29 +14,31 @@ import (
 // spaced writes a word with spaces between the letters: big text for the wire check.
 func spaced(s string) string { return strings.Join(strings.Split(s, ""), " ") }
 
-// wireBig is the large contact indicator.
-func wireBig(on bool, hits int, since string, w int) []string {
+// wireBig is the large contact indicator: a block of colour with the word in
+// it, the count of touches under it.
+func wireBig(touching bool, hits int, since string, w int) []string {
 	bw := w
 	if bw > 44 {
 		bw = 44
 	}
-	word, col, mark := spaced("разомкнуто"), cOK, "○"
-	if on {
-		word, col, mark = spaced("КОНТАКТ"), cTouch, "♦"
+	word, fg, bg := "○   "+spaced("разомкнуто")+"   ○", cBlack, cLightGreen
+	if touching {
+		word, bg = "♦   "+spaced("КОНТАКТ")+"   ♦", cYellow
 	}
-	b := boxC(thick, col, "", []string{"", center(paint(col, mark+"   "+word+"   "+mark), bw-4), ""}, bw)
-	return append(b, center(fmt.Sprintf("касаний %s   последнее изменение %s",
-		paint(cTitle, fmt.Sprint(hits)), paint(cTitle, since)), bw))
+	tile := func(s string) string { return on(fg, bg, center(s, bw)) }
+	return []string{tile(""), tile(word), tile(""), "",
+		center(paint(cHint, "касаний ")+paint(cTitle, fmt.Sprintf("%-4d", hits))+
+			paint(cHint, "   последнее изменение ")+paint(cTitle, since), bw)}
 }
 
 func cmdWire(o opts) error {
 	p := newPage(menuTitle("1"), "Ищу МК на COM-портах...")
-	m, name, err := findMCU(o.port)
+	m, name, err := findTouch(o.port)
 	if err != nil {
 		return err
 	}
 	p.set(func() {
-		p.info = []string{paint(cOK, "МК на "+name) + ". Касайтесь зажимом фрезы: здесь должно",
+		p.info = []string{mcuAt(name) + ". Касайтесь зажимом фрезы: здесь должно " +
 			"загораться КОНТАКТ. Станок не двигается."}
 		p.keys = []string{"Esc", "в меню"}
 	})
@@ -133,7 +135,7 @@ func cmdZero(o opts) error {
 		from = "scan.csv нет, первая точка сетки по программе"
 	}
 	p := newPage(menuTitle("4"), "Ищу МК на COM-портах...")
-	m, _, err := findMCU(o.port)
+	m, _, err := findTouch(o.port)
 	if err != nil {
 		return err
 	}
@@ -163,6 +165,10 @@ func cmdZero(o opts) error {
 	logLine(paint(cTouch, "♦ КОНТАКТ:") + " фреза касается меди.")
 	message("Обнулите Z", "Фреза касается меди.", paint(cTitle, "Обнулите Z в NcStudio")+" (рабочая система координат),",
 		"затем Enter здесь.")
+	if simM != nil {
+		simM.ZeroZ() // what the operator does in NcStudio
+		logLine(paint(cHint, "эмуляция: Z обнулён в NcStudio на этой высоте"))
+	}
 	nc.ResetZ()
 	if err := nc.Grab(); err != nil {
 		return err
@@ -215,7 +221,8 @@ func cmdLevel(o opts) error {
 // picture and the table of numbers.
 func mapResult(title string, hm *HeightMap, cut *rect, info []string) {
 	table := false
-	p := &page{title: title, info: info}
+	p := &page{title: title, head: "Итог", info: info, nolog: true}
+	curHead = title
 	p.pic = func(w, h int) []string {
 		if table {
 			t := heightTable(hm, colW(w))
@@ -237,6 +244,9 @@ func mapResult(title string, hm *HeightMap, cut *rect, info []string) {
 	}, 500*time.Millisecond)
 }
 
+// ncWindows lists the controls of NcStudio; the emulation has its own.
+var ncWindows = NcWindows
+
 // cmdFindCoords: can this program read the X/Y/Z NcStudio shows? Snapshot the text
 // of every NcStudio control, move each axis by 1 mm, and see which texts change.
 func cmdFindCoords(o opts) error {
@@ -254,7 +264,7 @@ func cmdFindCoords(o opts) error {
 	}
 	defer f.Close()
 	snap := func(name string) (map[uintptr]WinInfo, error) {
-		ws, err := NcWindows(o.title)
+		ws, err := ncWindows(o.title)
 		if err != nil {
 			return nil, err
 		}
