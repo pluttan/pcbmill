@@ -54,6 +54,49 @@ func ink(c int) string { return string([]byte{esc, byte('A' + c)}) }
 
 func paint(c int, s string) string { return ink(c) + s + plain }
 
+// A background mark is ESC and 'a'+colour; '0' resets it too.
+func bgInk(c int) string { return string([]byte{esc, byte('a' + c)}) }
+
+// The selected line of a menu, a pressed button: dark text on a cyan bar.
+const (
+	cSelBg = cCyan
+	cSelFg = cBlack
+)
+
+// hilite draws s as selected; colour marks inside s are dropped.
+func hilite(s string) string { return bgInk(cSelBg) + ink(cSelFg) + strip(s) + plain }
+
+// ansiOf turns the colour marks into terminal escape codes.
+func ansiOf(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] != esc || i+1 >= len(s) {
+			b.WriteByte(s[i])
+			continue
+		}
+		i++
+		m := s[i]
+		if m == '0' {
+			b.WriteString("\x1b[0m")
+			continue
+		}
+		base, c := 30, int(m-'A')
+		if m >= 'a' {
+			base, c = 40, int(m-'a')
+		}
+		if c < 0 || c > 15 {
+			continue
+		}
+		// console order is blue-green-red, ANSI is red-green-blue
+		n := [8]int{0, 4, 2, 6, 1, 5, 3, 7}[c&7] + base
+		if c >= 8 {
+			n += 60
+		}
+		fmt.Fprintf(&b, "\x1b[%dm", n)
+	}
+	return b.String()
+}
+
 // vlen is the width on screen: runes without the colour marks.
 func vlen(s string) int {
 	n := 0
@@ -184,6 +227,12 @@ const sep = "\x00sep"
 // box frames body lines, w wide in all; a title sits in the top edge. Lines too
 // long for the box are wrapped, so nothing sticks out of the frame.
 func box(f frame, title string, body []string, w int) []string {
+	return boxC(f, cFrame, title, body, w)
+}
+
+// boxC is box with its frame in colour fc: red for a stop.
+func boxC(f frame, fc int, title string, body []string, w int) []string {
+	cFrame := fc
 	if w < 8 {
 		w = 8
 	}
@@ -217,29 +266,6 @@ func box(f frame, title string, body []string, w int) []string {
 func rule(title string, w int) []string {
 	t, _ := cutv(title, w-8)
 	return []string{paint(cFrame, "═══ ") + paint(cTitle, t) + " " + paint(cFrame, repeat("═", w-5-vlen(t)))}
-}
-
-// banner is the head of the main screen.
-func banner(w int) []string {
-	return box(thick, "", []string{
-		center(paint(cTitle, "pcbscan")+paint(cFrame, "  ►  ")+"карта высот платы для NcStudio", w-4),
-		center(paint(cHint, "касание фрезы о медь · МК на COM · команды в окно NcStudio"), w-4),
-	}, w)
-}
-
-type menuItem struct{ key, text string }
-
-// menu: a sep item draws a rule, a key in capitals makes the line stand out.
-func menu(title string, items []menuItem, w int) []string {
-	var body []string
-	for _, it := range items {
-		if it.key == sep {
-			body = append(body, sep)
-			continue
-		}
-		body = append(body, " "+paint(cKey, padRight(it.key, 2))+paint(cFrame, "► ")+it.text)
-	}
-	return box(thin, title, body, w)
 }
 
 // twoCols lays "key  what it does" pairs out in two columns, row by row, or in
@@ -374,74 +400,3 @@ func statusLine(st Status, w int) []string {
 	}
 	return out
 }
-
-// ==========================
-// ===  Printing          ===
-// ==========================
-
-// page is the usable console width: a line as wide as the console makes it
-// wrap the cursor and leaves an empty line under it.
-func page() int {
-	w := conWidth() - 1
-	if w < 40 {
-		w = 40
-	}
-	return w
-}
-
-// boxW is the width of the text column: boxes, messages, the menu.
-func boxW() int {
-	if p := page(); p < 78 {
-		return p
-	}
-	return 78
-}
-
-// mapW is the width for the table picture: wider consoles get a bigger map.
-func mapW() int {
-	if p := page(); p < 110 {
-		return p
-	}
-	return 110
-}
-
-// margin centres the text column on the console.
-func margin() string { return spaces((page() - boxW()) / 2) }
-
-// show prints lines in the text column.
-func show(lines []string) {
-	m := margin()
-	for _, l := range lines {
-		say("%s%s\n", m, l)
-	}
-}
-
-// showMid prints a block centred on the console.
-func showMid(lines []string) {
-	w := 0
-	for _, l := range lines {
-		if vlen(l) > w {
-			w = vlen(l)
-		}
-	}
-	m := spaces((page() - w) / 2)
-	for _, l := range lines {
-		say("%s%s\n", m, l)
-	}
-}
-
-// tell prints a paragraph in the text column, wrapped to it.
-func tell(f string, a ...interface{}) {
-	for _, l := range strings.Split(strings.TrimRight(fmt.Sprintf(f, a...), "\n"), "\n") {
-		show(wrap(l, boxW(), 2))
-	}
-}
-
-func sayStop(err error) { show(note("■", cAlarm, "ОСТАНОВ:", err.Error(), boxW())) }
-func sayWarn(s string)  { show(note("▲", cAlarm, "ВНИМАНИЕ:", s, boxW())) }
-func sayBad(s string)   { show(note("◄", cAlarm, "", s, boxW())) }
-func sayOK(s string)    { show(note("√", cOK, "", paint(cOK, s), boxW())) }
-func sayHint(s string)  { show(wrap(paint(cHint, s), boxW(), 2)) }
-
-// prompt asks in the text column with a marker in front.
-func prompt(q string) string { return ask(margin() + paint(cKey, "► ") + q) }

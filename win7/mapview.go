@@ -190,13 +190,30 @@ func legend(items []string, w int) []string {
 	return out
 }
 
+// fitRows tries ever lower pictures until one is no taller than h; nil when
+// even the smallest is too tall.
+func fitRows(h int, f func(rows int) []string) []string {
+	top := mapRows
+	if h-3 < top {
+		top = h - 3
+	}
+	for rows := top; rows >= 4; rows-- {
+		if out := f(rows); len(out) <= h {
+			return out
+		}
+	}
+	return nil
+}
+
 // gridView: where the touch points fall on the program cut, before the scan.
-func gridView(g Grid, cut *rect, w int) []string {
+func gridView(g Grid, cut *rect, w int) []string { return gridViewRows(g, cut, w, mapRows) }
+
+func gridViewRows(g Grid, cut *rect, w, rows int) []string {
 	area := rect{g.X0, g.X1, g.Y0, g.Y1}
 	if cut != nil {
 		area = area.union(*cut)
 	}
-	c := newCanvas(area, w-gutter-1-2-6, mapRows)
+	c := newCanvas(area, w-gutter-1-2-6, rows)
 	if cut != nil {
 		c.frame(*cut)
 	}
@@ -244,12 +261,16 @@ func shadeOf(z, lo, hi float64) int {
 // heightView: the copper height over the map area, interpolated like ApplyMap
 // does, darker = higher; ticks on the axes are the touch points.
 func heightView(h *HeightMap, cut *rect, w int) []string {
+	return heightViewRows(h, cut, w, mapRows)
+}
+
+func heightViewRows(h *HeightMap, cut *rect, w, rows int) []string {
 	gb := rect{h.xs[0], h.xs[len(h.xs)-1], h.ys[0], h.ys[len(h.ys)-1]}
 	area := gb
 	if cut != nil {
 		area = area.union(*cut)
 	}
-	c := newCanvas(area, w-gutter-1-2-6, mapRows)
+	c := newCanvas(area, w-gutter-1-2-6, rows)
 	lo, hi := h.span()
 	for r := c.row(gb.Y1); r <= c.row(gb.Y0); r++ {
 		for k := c.col(gb.X0); k <= c.col(gb.X1); k++ {
@@ -321,4 +342,45 @@ func heightTable(h *HeightMap, w int) []string {
 		}
 	}
 	return out
+}
+
+// scanView is the grid during the scan: measured points in the shade of their
+// height, the point being touched now bright (blink alternates its colour on
+// every redraw), the ones still to come as dots.
+func scanView(g Grid, cut *rect, done []Point, blink bool, w, rows int) []string {
+	area := rect{g.X0, g.X1, g.Y0, g.Y1}
+	if cut != nil {
+		area = area.union(*cut)
+	}
+	c := newCanvas(area, w-gutter-1-2-6, rows)
+	if cut != nil {
+		c.frame(*cut)
+	}
+	pts := g.Points()
+	lo, hi := math.Inf(1), math.Inf(-1)
+	for _, p := range done {
+		lo, hi = math.Min(lo, p.Z), math.Max(hi, p.Z)
+	}
+	for i, p := range pts {
+		mark := paint(cHint, "·")
+		switch {
+		case i < len(done):
+			s := shadeOf(done[i].Z, lo, hi)
+			mark = paint(shadeColor[s], shades[s])
+		case i == len(done):
+			col := cYellow
+			if blink {
+				col = cWhite
+			}
+			mark = paint(col, "■")
+		}
+		c.set(c.col(p[0]), c.row(p[1]), mark)
+	}
+	out := c.render(spread(g.X0, g.X1, g.NX), spread(g.Y0, g.Y1, g.NY))
+	items := []string{paint(cYellow, "■") + " касание сейчас", paint(cHint, "·") + " впереди"}
+	if len(done) > 1 && hi-lo > 1e-9 {
+		items = append(items, fmt.Sprintf("%s ниже .. %s выше", paint(shadeColor[0], shades[0]),
+			paint(shadeColor[len(shades)-1], shades[len(shades)-1])))
+	}
+	return append(out, legend(items, w)...)
 }

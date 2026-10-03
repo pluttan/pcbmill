@@ -75,22 +75,21 @@ var startAttr = func() uint16 {
 	return 0x07
 }()
 
-// setInk switches the text colour; the background stays as it was.
-func setInk(h uintptr, mark byte) {
-	a := startAttr
-	if mark >= 'A' && mark < 'A'+16 {
-		a = startAttr&0xFFF0 | uint16(mark-'A')
-	}
-	pSetConsoleTextAttribute.Call(h, uintptr(a))
-}
+// curAttr is the colour say writes with now.
+var curAttr = startAttr
 
-// conWidth is how many columns the console window shows; 80 when redirected.
-func conWidth() int {
-	ci, ok := consoleInfo()
-	if !ok {
-		return 80
+// setInk switches the text colour ('A'+c) or the background ('a'+c); '0' goes
+// back to the colours the console had at start.
+func setInk(h uintptr, mark byte) {
+	switch {
+	case mark >= 'A' && mark < 'A'+16:
+		curAttr = curAttr&0xFFF0 | uint16(mark-'A')
+	case mark >= 'a' && mark < 'a'+16:
+		curAttr = curAttr&0xFF0F | uint16(mark-'a')<<4
+	default:
+		curAttr = startAttr
 	}
-	return int(ci.Window.Right-ci.Window.Left) + 1
+	pSetConsoleTextAttribute.Call(h, uintptr(curAttr))
 }
 
 func workArea() (winRect, bool) {
@@ -194,8 +193,8 @@ func placeNc(h uintptr) {
 	time.Sleep(300 * time.Millisecond) // let it redraw before keys are typed into it
 }
 
-// placeConsole fits the console into r: the window and the buffer get the same
-// width, so there is no horizontal scrolling, and the buffer keeps a long history.
+// placeConsole fits the console into r: the buffer gets the size of the window,
+// so there are no scroll bars and the full-screen frame is the whole buffer.
 func placeConsole(r winRect) {
 	w, _, _ := pGetConsoleWindow.Call()
 	if w == 0 {
@@ -208,8 +207,8 @@ func placeConsole(r winRect) {
 	}
 	pShowWindow.Call(w, swRestore)
 	time.Sleep(50 * time.Millisecond)
-	// frame and caption: the window rectangle less the client one; the vertical
-	// scroll bar is counted as shown, the horizontal one as gone
+	// frame and caption: the window rectangle less the client one; both scroll
+	// bars are counted as gone, the buffer will be exactly the window
 	var wr, cr winRect
 	pGetWindowRect.Call(w, uintptr(unsafe.Pointer(&wr)))
 	pGetClientRect.Call(w, uintptr(unsafe.Pointer(&cr)))
@@ -217,9 +216,9 @@ func placeConsole(r winRect) {
 	style, _, _ := pGetWindowLongW.Call(w, uintptr(gwlStyle))
 	dx := (wr.Right - wr.Left) - (cr.Right - cr.Left)
 	dy := (wr.Bottom - wr.Top) - (cr.Bottom - cr.Top)
-	if style&wsVScroll == 0 {
+	if style&wsVScroll != 0 {
 		v, _, _ := pGetSystemMetrics.Call(smCxVScroll)
-		dx += int32(v)
+		dx -= int32(v)
 	}
 	if style&wsHScroll != 0 {
 		v, _, _ := pGetSystemMetrics.Call(smCyHScroll)
@@ -247,13 +246,7 @@ func placeConsole(r winRect) {
 	if cols < 40 || rows < 10 {
 		return
 	}
-	bufH := int32(ci.Size.Y)
-	if bufH < 3000 {
-		bufH = 3000
-	}
-	if bufH < rows {
-		bufH = rows
-	}
+	bufH := rows
 	// the window must always fit the buffer: shrink it, set the buffer, grow it
 	cw, ch := int32(ci.Window.Right-ci.Window.Left)+1, int32(ci.Window.Bottom-ci.Window.Top)+1
 	if cw > cols {
@@ -268,14 +261,7 @@ func placeConsole(r winRect) {
 	if ok, _, _ := pSetConsoleScreenBufferSize.Call(out, size); ok == 0 {
 		return
 	}
-	top := int32(ci.Cursor.Y) - rows + 1 // keep the cursor in sight
-	if top < 0 {
-		top = 0
-	}
-	if top+rows > bufH {
-		top = bufH - rows
-	}
-	win := smallRect{0, int16(top), int16(cols - 1), int16(top + rows - 1)}
+	win := smallRect{0, 0, int16(cols - 1), int16(rows - 1)}
 	pSetConsoleWindowInfo.Call(out, 1, uintptr(unsafe.Pointer(&win)))
 	pSetWindowPos.Call(w, 0, uintptr(r.Left), uintptr(r.Top), uintptr(cols*fw+dx), uintptr(rows*fh+dy),
 		swpNoZOrder)

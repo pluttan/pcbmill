@@ -102,18 +102,15 @@ func TestFrames(t *testing.T) {
 	for _, w := range []int{30, 40, 60, 78, 110} {
 		closed(t, "box", box(thin, "Перед стартом", []string{long, sep, "", paint(cHint, "коротко")}, w), thin, w)
 		closed(t, "box без заголовка", box(thin, "", []string{"x"}, w), thin, w)
-		closed(t, "banner", banner(w), thick, w)
-		closed(t, "menu", menu("Меню", mainMenu, w), thin, w)
-		closed(t, "сетка", box(thin, "Поменять сетку или Enter", twoCols(gridKeys, w-4), w), thin, w)
-		closed(t, "ручной", box(thin, "Команды", twoCols(manualKeys(opts{search: 3}), w-4), w), thin, w)
-		closed(t, "инфо", box(thin, "Сетка", gridInfo(GridFor(-1.37, 63.26, -0.2, 48.05, 8),
-			GridFor(0.63, 61.26, 1.8, 46.05, 10)), w), thin, w)
+		closed(t, "logo", logo(w, false), thick, w)
+		closed(t, "ручной", box(thin, "Команды", twoCols(newManual(opts{search: 3}, nil, nil, "").keys(), w-4), w), thin, w)
+		closed(t, "сетка", newGridForm(GridFor(0.63, 61.26, 1.8, 46.05, 10)).form(), thin, formW)
 		onScreen(t, "rule", rule("3 ► Карта высот", w), w)
 		onScreen(t, "note", note("■", cAlarm, "ОСТАНОВ:", long, w), w)
 		onScreen(t, "bar", []string{bar(3, 7, 12), bar(9, 7, 12), bar(0, 0, 12)}, 12)
 	}
 	// the manual-mode keys fit two columns on an 80-column console
-	if l := twoCols(manualKeys(opts{search: 3}), 74); len(l) != 9 {
+	if l := twoCols(newManual(opts{search: 3}, nil, nil, "").keys(), 74); len(l) != 5 {
 		t.Fatalf("ручной режим не в две колонки: %d строк", len(l))
 	}
 }
