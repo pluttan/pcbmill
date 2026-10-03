@@ -50,11 +50,11 @@ func startGUI(o opts) error {
 	if err != nil {
 		return err
 	}
+	theme = th // the window icon is drawn in its colours
 	d, err := openDisplay(o)
 	if err != nil {
 		return err
 	}
-	theme = th
 	app = ui.NewApp(d, th)
 	app.OnClose = func() { askQuit() }
 	return nil

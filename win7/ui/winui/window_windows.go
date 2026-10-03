@@ -116,6 +116,24 @@ func Open(title string, w, h int) (*Window, error) {
 	return win, nil
 }
 
+// placeIn: the window in the middle of the work area, smaller when the
+// screen is (a laptop with 768 lines has no room for 800).
+func placeIn(w, h int) (x, y uintptr, ww, wh int) {
+	var a rect
+	ok, _, _ := pSystemParametersInfoW.Call(spiGetWorkArea, 0, uintptr(unsafe.Pointer(&a)), 0)
+	if ok == 0 || a.Right <= a.Left || a.Bottom <= a.Top {
+		return cwUseDefault, cwUseDefault, w, h
+	}
+	aw, ah := int(a.Right-a.Left), int(a.Bottom-a.Top)
+	if w > aw {
+		w = aw
+	}
+	if h > ah {
+		h = ah
+	}
+	return uintptr(int(a.Left) + (aw-w)/2), uintptr(int(a.Top) + (ah-h)/2), w, h
+}
+
 // run owns the window: every message of it is handled on this thread.
 func (w *Window) run(title string, cw, ch int, ready chan<- error) {
 	runtime.LockOSThread()
@@ -129,6 +147,7 @@ func (w *Window) run(title string, cw, ch int, ready chan<- error) {
 	exStyle := uintptr(wsExAppWindow)
 	r := rect{0, 0, int32(cw), int32(ch)}
 	pAdjustWindowRectEx.Call(uintptr(unsafe.Pointer(&r)), style, 0, exStyle)
+	x, y, ww, wh := placeIn(int(r.Right-r.Left), int(r.Bottom-r.Top))
 	inst, _, _ := pGetModuleHandleW.Call(0)
 
 	openMu.Lock()
@@ -137,7 +156,7 @@ func (w *Window) run(title string, cw, ch int, ready chan<- error) {
 	winMu.Unlock()
 	hwnd, _, e := pCreateWindowExW.Call(exStyle, uintptr(unsafe.Pointer(className)),
 		uintptr(unsafe.Pointer(utf16Ptr(title))), style,
-		cwUseDefault, cwUseDefault, uintptr(r.Right-r.Left), uintptr(r.Bottom-r.Top),
+		x, y, uintptr(ww), uintptr(wh),
 		0, 0, inst, 0)
 	winMu.Lock()
 	creating = nil

@@ -7,6 +7,7 @@ package ui
 import (
 	"image"
 	"image/color"
+	"math"
 	"time"
 
 	"pcbscan/gfx"
@@ -206,7 +207,7 @@ type TextAt struct {
 }
 
 // Measure: the width of s in the style.
-func (c *Ctx) Measure(s string, st Style) int { return int(c.face(st).Measure(s) + 0.5) }
+func (c *Ctx) Measure(s string, st Style) int { return int(math.Ceil(c.face(st).Measure(s))) }
 
 // LineH: the line height of the style.
 func (c *Ctx) LineH(st Style) int { return int(c.face(st).LineHeight + 0.5) }

@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -321,7 +322,10 @@ func main() {
 	}
 	defer func() {
 		if r := recover(); r != nil {
-			fatal(fmt.Sprintf("pcbscan упал: %v", r))
+			// the stack goes to a file next to the exe: a window app has no console
+			crash := filepath.Join(exeDir(), "pcbscan-crash.txt")
+			os.WriteFile(crash, []byte(fmt.Sprintf("%v\n\n%s", r, debug.Stack())), 0644)
+			fatal(fmt.Sprintf("pcbscan упал: %v\n\nПодробности в %s", r, crash))
 			panic(r)
 		}
 	}()

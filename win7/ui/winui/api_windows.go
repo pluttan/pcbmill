@@ -54,6 +54,7 @@ var (
 	pGetDC                    = user32.NewProc("GetDC")
 	pReleaseDC                = user32.NewProc("ReleaseDC")
 	pGetSystemMetrics         = user32.NewProc("GetSystemMetrics")
+	pSystemParametersInfoW    = user32.NewProc("SystemParametersInfoW")
 	pCreateIconIndirect       = user32.NewProc("CreateIconIndirect")
 	pDestroyIcon              = user32.NewProc("DestroyIcon")
 	pMessageBoxW              = user32.NewProc("MessageBoxW")
@@ -143,23 +144,24 @@ const (
 	vkMenu    = 0x12
 	vkF4      = 0x73
 
-	logPixelsX    = 88
-	smCxIcon      = 11
-	smCyIcon      = 12
-	smCxSmIcon    = 49
-	smCySmIcon    = 50
-	iconSmall     = 0
-	iconBig       = 1
-	dibRGBColors  = 0
-	csHRedraw     = 0x0002
-	csVRedraw     = 0x0001
-	idcArrow      = 32512
-	mbOK          = 0x00000000
-	mbIconError   = 0x00000010
-	mbTopMost     = 0x00040000
-	mbSetFg       = 0x00010000
-	inputKeyboard = 1
-	keyEventUp    = 0x0002
+	logPixelsX     = 88
+	smCxIcon       = 11
+	spiGetWorkArea = 0x0030
+	smCyIcon       = 12
+	smCxSmIcon     = 49
+	smCySmIcon     = 50
+	iconSmall      = 0
+	iconBig        = 1
+	dibRGBColors   = 0
+	csHRedraw      = 0x0002
+	csVRedraw      = 0x0001
+	idcArrow       = 32512
+	mbOK           = 0x00000000
+	mbIconError    = 0x00000010
+	mbTopMost      = 0x00040000
+	mbSetFg        = 0x00010000
+	inputKeyboard  = 1
+	keyEventUp     = 0x0002
 
 	bgColor = 0x002e1e1e // COLORREF of #1e1e2e: 0x00BBGGRR
 )
