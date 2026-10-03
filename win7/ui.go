@@ -291,7 +291,7 @@ var cur *page
 var curHead string
 
 func newPage(title string, info ...string) *page {
-	p := &page{title: title, info: info}
+	p := &page{title: title, head: "Что будет", info: info}
 	cur, curHead = p, title
 	backdrop = p.view
 	p.draw()

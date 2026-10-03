@@ -119,6 +119,9 @@ func cmdScan(o opts) error {
 		refresh()
 		p.nolog, p.head = true, "Обход"
 		p.keys = []string{"Esc", "стоп между точками", "щелчок по другому окну", "стоп сразу"}
+		if simM != nil { // the virtual NcStudio has no window to lose the focus
+			p.keys = p.keys[:2]
+		}
 		p.pic = func(w, h int) []string {
 			return fitRows(h, func(r int) []string { return scanView(g, &cut, done, blink, w, r) })
 		}

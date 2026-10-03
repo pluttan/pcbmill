@@ -239,6 +239,32 @@ func legend(items []string, w int) []string {
 	return out
 }
 
+// legendUnder is the legend of a picture: lines no wider than the picture
+// (but 44 at least, the colour scale needs that), centred under it.
+func legendUnder(pic, items []string, w int) []string {
+	lw := blockWidth(pic)
+	if lw < 44 {
+		lw = 44
+	}
+	if lw > w {
+		lw = w
+	}
+	ls := legend(items, lw)
+	for i, l := range ls {
+		ls[i] = center(l, lw)
+	}
+	return ls
+}
+
+// centerBlock centres every line on the widest: the picture over a wider legend.
+func centerBlock(ls []string) []string {
+	w := blockWidth(ls)
+	for i, l := range ls {
+		ls[i] = center(l, w)
+	}
+	return ls
+}
+
 // fitRows tries ever lower pictures until one is no taller than h; nil when
 // even the smallest is too tall.
 func fitRows(h int, f func(rows int) []string) []string {
@@ -279,7 +305,7 @@ func gridViewRows(g Grid, cut *rect, w, rows int) []string {
 	if cut != nil {
 		items = append(items, paint(cCut, "┌┐")+paint(cHint, " рез программы"))
 	}
-	return append(out, legend(items, w)...)
+	return centerBlock(append(out, legendUnder(out, items, w)...))
 }
 
 // span is the lowest and highest copper of the map.
@@ -353,7 +379,7 @@ func heightViewRows(h *HeightMap, cut *rect, w, rows int) []string {
 	if cut != nil {
 		stats = append(stats, paint(cCut, "┌┐")+paint(cHint, " рез"))
 	}
-	return append(out, legend(stats, w)...)
+	return centerBlock(append(out, legendUnder(out, stats, w)...))
 }
 
 // heightTable is the map in numbers, to check the picture against: Y down the
@@ -435,5 +461,5 @@ func scanView(g Grid, cut *rect, done []Point, blink bool, w, rows int) []string
 		}
 		items = append(items, paint(cHint, "ниже ")+bar+paint(cHint, " выше"))
 	}
-	return append(out, legend(items, w)...)
+	return centerBlock(append(out, legendUnder(out, items, w)...))
 }

@@ -38,6 +38,7 @@ func cmdWire(o opts) error {
 		return err
 	}
 	p.set(func() {
+		p.head = "Как проверять"
 		p.info = []string{mcuAt(name) + ". Касайтесь зажимом фрезы: здесь должно " +
 			"загораться КОНТАКТ. Станок не двигается."}
 		p.keys = []string{"Esc", "в меню"}
