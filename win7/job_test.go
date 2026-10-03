@@ -183,7 +183,15 @@ func TestJobPrograms(t *testing.T) {
 		if err != nil {
 			t.Fatal(f, err)
 		}
-		if cut.X0 < j.Margin-1 || cut.Y0 < j.Margin-1 || cut.X1 > j.W-j.Margin+1 || cut.Y1 > j.H-j.Margin+1 {
+		lo := j.Margin - 1
+		if strings.Contains(f, "sheet_2_mask.") { // the bare circle at the zero
+			lo = j.Margin/2 - zeroSpotR - 0.01
+			z := j.zero()
+			if math.Abs(cut.X0-(z.X-zeroSpotR)) > 0.1 || math.Abs(cut.Y0-(z.Y-zeroSpotR)) > 0.1 {
+				t.Errorf("маска не вскрывает круг в ноле: рез от X%.2f Y%.2f", cut.X0, cut.Y0)
+			}
+		}
+		if cut.X0 < lo || cut.Y0 < lo || cut.X1 > j.W-j.Margin+1 || cut.Y1 > j.H-j.Margin+1 {
 			t.Errorf("%s: рез X %.1f..%.1f Y %.1f..%.1f за листом", filepath.Base(f), cut.X0, cut.X1, cut.Y0, cut.Y1)
 		}
 		title, _, _, _ := progNotes(f)

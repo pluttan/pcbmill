@@ -50,6 +50,26 @@ const jobFile = "job.txt"
 // the corner of the sheet, outside every board: the mask never covers it.
 func (j *Job) zero() pt { return pt{j.Margin / 2, j.Margin / 2} }
 
+// zeroSpotR: the radius of the circle the mask program bares at the zero.
+const zeroSpotR = 1.0
+
+// zeroSpot: rings from the edge of the circle inwards at the mask depth and
+// the centre, so the copper under the zero is bare for the touches of Z0.
+func zeroSpot(at pt, c camCfg) []cpath {
+	rt := c.maskWidth(c.MaskDepth) / 2
+	var out []cpath
+	for r := zeroSpotR - rt; r > 0.5*rt; r -= 0.9 * rt {
+		n := int(math.Max(12, math.Ceil(2*math.Pi*r/0.1)))
+		var ring cpath
+		for i := 0; i <= n; i++ {
+			a := 2 * math.Pi * float64(i) / float64(n)
+			ring.pts = append(ring.pts, p3{at.X + r*math.Cos(a), at.Y + r*math.Sin(a), -c.MaskDepth})
+		}
+		out = append(out, ring)
+	}
+	return append(out, cpath{pts: []p3{{at.X, at.Y, -c.MaskDepth}}})
+}
+
 func (j *Job) save() error {
 	if err := os.MkdirAll(j.Dir, 0755); err != nil {
 		return err
@@ -495,6 +515,12 @@ func (j *Job) cam(c camCfg, say func(string)) ([]*camOp, error) {
 			m.marks = append(m.marks, op.marks...)
 			m.shortW = math.Max(m.shortW, op.shortW)
 		}
+	}
+	if m := merged["2_mask"]; m != nil { // bare copper at the zero for the touches after the mask
+		z := j.zero()
+		m.paths = append(m.paths, zeroSpot(z, c)...)
+		m.notes = append(m.notes, fmt.Sprintf("круг %s мм без маски в ноле X%s Y%s: касание Z0 после маски",
+			num(2*zeroSpotR), num(z.X), num(z.Y)))
 	}
 	if j.Probe != nil && merged["2_mask"] != nil {
 		op := maskTest(*j.Probe, c)
