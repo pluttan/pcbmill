@@ -810,6 +810,12 @@ func (u *jobUI) redo(files []string, stage string) error {
 	}
 	used := u.j.used(u.mirror())
 	src := 0.0
+	for i, f := range files { // the main file of the stage, not the mask probe
+		if !strings.Contains(f, "_probe") {
+			src = float64(i)
+			break
+		}
+	}
 	x, y, r, d := math.Round((used.X0+used.X1)/2), math.Round((used.Y0+used.Y1)/2), 10.0, 0.05
 	f := &numForm{title: "Повторить в круге", ok: "Сделать файл", fields: []formField{
 		{label: "файл", choices: names, get: func() float64 { return src }, set: func(v float64) { src = v }},
