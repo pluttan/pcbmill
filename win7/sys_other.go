@@ -10,9 +10,43 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 )
 
-func say(f string, a ...interface{}) { fmt.Printf(f, a...) }
+// say drops the colour marks; PCBSCAN_ANSI=1 shows them as terminal colours.
+func say(f string, a ...interface{}) {
+	s := fmt.Sprintf(f, a...)
+	if os.Getenv("PCBSCAN_ANSI") == "" {
+		fmt.Print(strip(s))
+		return
+	}
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] != esc || i+1 >= len(s) {
+			b.WriteByte(s[i])
+			continue
+		}
+		i++
+		if s[i] == '0' {
+			b.WriteString("\x1b[0m")
+			continue
+		}
+		c := int(s[i] - 'A')
+		// console order is blue-green-red, ANSI is red-green-blue
+		fg := [8]int{0, 4, 2, 6, 1, 5, 3, 7}[c&7] + 30
+		if c >= 8 {
+			fg += 60
+		}
+		fmt.Fprintf(&b, "\x1b[%dm", fg)
+	}
+	fmt.Print(b.String())
+}
+
+func conWidth() int { return 80 }
+
+func layoutWindows(string) {}
+
+func ncFound(string) bool { return false }
 
 func ComPorts() []string { return nil }
 

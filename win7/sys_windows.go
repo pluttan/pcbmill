@@ -54,17 +54,28 @@ var (
 // ==========================
 
 // say writes through WriteConsoleW: the Windows 7 console is cp866, UTF-8 bytes would be garbage.
+// Colour marks become console attributes between the pieces.
 func say(f string, a ...interface{}) {
 	s := fmt.Sprintf(f, a...)
-	h, _, _ := pGetStdHandle.Call(uintptr(0xFFFFFFF5)) // STD_OUTPUT_HANDLE
-	u := utf16.Encode([]rune(strings.ReplaceAll(s, "\n", "\r\n")))
-	if len(u) == 0 {
-		return
-	}
-	var n uint32
-	r, _, _ := pWriteConsoleW.Call(h, uintptr(unsafe.Pointer(&u[0])), uintptr(len(u)), uintptr(unsafe.Pointer(&n)), 0)
-	if r == 0 { // redirected to a file
-		os.Stdout.WriteString(s)
+	h := stdout()
+	for i, part := range strings.Split(s, string(esc)) {
+		if i > 0 {
+			if part == "" {
+				continue
+			}
+			setInk(h, part[0])
+			part = part[1:]
+		}
+		u := utf16.Encode([]rune(strings.ReplaceAll(part, "\n", "\r\n")))
+		if len(u) == 0 {
+			continue
+		}
+		var n uint32
+		r, _, _ := pWriteConsoleW.Call(h, uintptr(unsafe.Pointer(&u[0])), uintptr(len(u)), uintptr(unsafe.Pointer(&n)), 0)
+		if r == 0 { // redirected to a file
+			os.Stdout.WriteString(strip(s))
+			return
+		}
 	}
 }
 
@@ -251,7 +262,11 @@ func sendKey(vk, scan uint16, flags uint32) {
 
 func (k *WinKeys) find() error {
 	var found uintptr
+	self, _, _ := pGetConsoleWindow.Call() // its caption is the exe path, maybe ...\NcStudio\...
 	cb := syscall.NewCallback(func(h, _ uintptr) uintptr {
+		if h == self {
+			return 1
+		}
 		if v, _, _ := pIsWindowVisible.Call(h); v == 0 {
 			return 1
 		}
@@ -317,6 +332,7 @@ func (k *WinKeys) Grab() error {
 		if err := k.find(); err != nil {
 			return err
 		}
+		placeNc(k.hwnd) // the left half of the screen, once per run; focus untouched
 	}
 	if k.focused() {
 		return nil

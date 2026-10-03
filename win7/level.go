@@ -155,6 +155,7 @@ func snake(xs, ys []float64) [][2]float64 {
 type HeightMap struct {
 	xs, ys []float64
 	z      [][]float64 // z[j][i]
+	zx, zy float64     // the first point: every height is relative to it
 }
 
 func snap(vals []float64, tol float64) []float64 {
@@ -197,7 +198,7 @@ func MapFromPoints(pts []Point) (*HeightMap, error) {
 	for _, p := range pts {
 		xv, yv = append(xv, p.X), append(yv, p.Y)
 	}
-	h := &HeightMap{xs: snap(xv, 0.3), ys: snap(yv, 0.3)}
+	h := &HeightMap{xs: snap(xv, 0.3), ys: snap(yv, 0.3), zx: pts[0].X, zy: pts[0].Y}
 	sum := make([][]float64, len(h.ys))
 	cnt := make([][]int, len(h.ys))
 	for j := range sum {

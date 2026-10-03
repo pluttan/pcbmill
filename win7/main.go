@@ -214,7 +214,7 @@ func latin(s string) string {
 }
 
 func yes(q string) bool {
-	a := strings.ToLower(ask(q + " [y/n]: "))
+	a := strings.ToLower(prompt(q + " " + paint(cKey, "[y/n]") + ": "))
 	return a == "y" || a == "д" || a == "l" // l: 'д' typed on the latin layout
 }
 
@@ -241,11 +241,13 @@ func pickTap(dir string) (string, error) {
 	if len(taps) == 0 {
 		return "", fmt.Errorf("рядом с pcbscan.exe нет файлов .tap: положите программу платы в эту папку")
 	}
+	var items []menuItem
 	for i, t := range taps {
-		say("  %d  %s\n", i+1, filepath.Base(t))
+		items = append(items, menuItem{strconv.Itoa(i + 1), filepath.Base(t)})
 	}
+	show(menu("Программы рядом с pcbscan.exe", items, boxW()))
 	var k int
-	fmt.Sscan(ask("номер программы: "), &k)
+	fmt.Sscan(prompt("номер программы: "), &k)
 	if k < 1 || k > len(taps) {
 		return "", fmt.Errorf("нет такого номера")
 	}
@@ -270,7 +272,7 @@ type opts struct {
 	port, mdiKey, title string
 	grid, clear, search float64
 	below               float64
-	keep                bool
+	keep, nolayout      bool
 	step, fine          float64
 	rapid               float64
 	settle              int
@@ -288,16 +290,18 @@ func newScanner(o opts, m Machine, t Touch) *Scanner {
 	s := NewScanner(m, t)
 	s.Clear, s.Search, s.StepCoarse, s.StepFine = o.clear, o.search, o.step, o.fine
 	s.Below = o.below
-	s.Log = func(l string) { say("%s\n", l) }
+	s.Log = func(l string) { show([]string{l}) }
 	return s
 }
 
 func cmdWire(o opts) error {
+	show(rule("1 ► Проверка провода", boxW()))
 	m, name, err := findMCU(o.port)
 	if err != nil {
 		return err
 	}
-	say("МК найден на %s. Касайтесь зажимом фрезы; выход в меню: Enter.\n", name)
+	sayOK("МК найден на " + name)
+	sayHint("Касайтесь зажимом фрезы; выход в меню: Enter.")
 	last := !m.State()
 	for {
 		select {
@@ -310,10 +314,11 @@ func cmdWire(o opts) error {
 		}
 		if s := m.State(); s != last {
 			last = s
+			t := paint(cHint, time.Now().Format("15:04:05"))
 			if s {
-				say("%s  КОНТАКТ\n", time.Now().Format("15:04:05"))
+				show([]string{t + "  " + paint(cTouch, "♦ КОНТАКТ")})
 			} else {
-				say("%s  разомкнуто\n", time.Now().Format("15:04:05"))
+				show([]string{t + "  " + paint(cOK, "○ разомкнуто")})
 			}
 		}
 		time.Sleep(20 * time.Millisecond)
@@ -321,9 +326,14 @@ func cmdWire(o opts) error {
 }
 
 func cmdNcTest(o opts) error {
-	say("Фреза не ниже 5 мм над заготовкой. Программа нажмёт в NcStudio %s и введёт\n", o.mdiKey)
-	say("  G91 G00 Z1   (вверх на 1 мм), потом G91 G00 Z-1 (обратно).\n")
-	say("Пока она печатает, мышь и клавиатуру не трогать.\n")
+	show(rule("2 ► Связь с NcStudio", boxW()))
+	show(box(thin, "Что будет", []string{
+		"Фреза не ниже 5 мм над заготовкой. Программа нажмёт в NcStudio " + paint(cKey, o.mdiKey) + " и введёт",
+		"  " + paint(cTitle, "G91 G00 Z1") + "   вверх на 1 мм, потом",
+		"  " + paint(cTitle, "G91 G00 Z-1") + "  обратно.",
+		sep,
+		paint(cHint, "Пока она печатает, мышь и клавиатуру не трогать."),
+	}, boxW()))
 	if !yes("начать?") {
 		return nil
 	}
@@ -343,10 +353,10 @@ func cmdNcTest(o opts) error {
 	}
 	down := yes("Z вернулся вниз?")
 	if up && down {
-		say("Связь с NcStudio работает.\n")
+		sayOK("Связь с NcStudio работает.")
 	} else {
-		say("Не сработало. Узнайте, какими клавишами в вашей NcStudio открывается окно ввода\n")
-		say("одной строки G-кода (MDI), и запустите: pcbscan.exe -mdi ctrl+shift+f9 (свои клавиши).\n")
+		sayWarn("не сработало. Узнайте, какими клавишами в вашей NcStudio открывается окно ввода " +
+			"одной строки G-кода (MDI), и запустите: pcbscan.exe -mdi ctrl+shift+f9 (свои клавиши).")
 	}
 	return nil
 }
@@ -367,11 +377,31 @@ func gridFor(tap string, step float64) (Grid, error) {
 const secondsPerPoint = 9.0
 
 func showGrid(g Grid, prog Grid) {
-	say("\nСетка карты высот:\n")
-	say("  область  X %.2f .. %.2f   Y %.2f .. %.2f мм\n", g.X0, g.X1, g.Y0, g.Y1)
-	say("  точек    X %d (шаг %.2f)   Y %d (шаг %.2f)\n", g.NX, g.StepX(), g.NY, g.StepY())
-	say("  всего %d точек, примерно %.0f мин\n", g.NX*g.NY, float64(g.NX*g.NY)*secondsPerPoint/60)
-	say("  (рез программы: X %.2f .. %.2f   Y %.2f .. %.2f)\n", prog.X0, prog.X1, prog.Y0, prog.Y1)
+	cut := rect{prog.X0, prog.X1, prog.Y0, prog.Y1}
+	say("\n")
+	show(rule("Сетка карты высот", boxW()))
+	showMid(gridView(g, &cut, mapW()))
+	show(box(thin, "Сетка", gridInfo(g, prog), boxW()))
+}
+
+func gridInfo(g, prog Grid) []string {
+	n := g.NX * g.NY
+	return []string{
+		fmt.Sprintf("область  X %.2f .. %.2f   Y %.2f .. %.2f мм", g.X0, g.X1, g.Y0, g.Y1),
+		fmt.Sprintf("точек    X %s (шаг %.2f)   Y %s (шаг %.2f)   всего %s", paint(cTitle, strconv.Itoa(g.NX)),
+			g.StepX(), paint(cTitle, strconv.Itoa(g.NY)), g.StepY(), paint(cTitle, strconv.Itoa(n))),
+		fmt.Sprintf("время    примерно %s мин", paint(cTitle, fmt.Sprintf("%.0f", float64(n)*secondsPerPoint/60))),
+		paint(cHint, fmt.Sprintf("рез программы: X %.2f .. %.2f   Y %.2f .. %.2f", prog.X0, prog.X1, prog.Y0, prog.Y1)),
+	}
+}
+
+var gridKeys = [][2]string{
+	{"x 0 60", "область по X, мм"}, {"sx 5", "шаг по X, мм"},
+	{"y 0 40", "область по Y, мм"}, {"sy 5", "шаг по Y, мм"},
+	{"m 2", "запас за край реза"}, {"s 10", "шаг по обеим осям"},
+	{"nx 8", "точек по X"}, {"ny 6", "точек по Y"},
+	{"r", "как в программе"}, {"q", "отмена"},
+	{"Enter", "начать обход с этой сеткой"},
 }
 
 // keepStep: the current step, or the program's when there is a single point (no step yet).
@@ -391,14 +421,10 @@ func editGrid(g Grid) (Grid, bool) {
 	for {
 		showGrid(g, prog)
 		if g.X0 > prog.X0+1e-6 || g.X1 < prog.X1-1e-6 || g.Y0 > prog.Y0+1e-6 || g.Y1 < prog.Y1-1e-6 {
-			say("  ВНИМАНИЕ: сетка меньше реза программы, за её краем высота берётся с края карты\n")
+			sayWarn("сетка меньше реза программы, за её краем высота берётся с края карты")
 		}
-		say("Enter - начать с этой сеткой, или поменять:\n")
-		say("  x 0 60   область по X, мм     y 0 40   область по Y, мм     m 2   запас за край реза\n")
-		say("  sx 5     шаг по X, мм         sy 5     шаг по Y, мм         s 10  шаг по обеим\n")
-		say("  nx 8     точек по X           ny 6     точек по Y           r     как в программе\n")
-		say("  q        отмена\n")
-		in := latin(ask("> "))
+		show(box(thin, "Поменять сетку или Enter", twoCols(gridKeys, boxW()-4), boxW()))
+		in := latin(prompt("сетка: "))
 		f := strings.Fields(strings.ReplaceAll(in, ",", "."))
 		if len(f) == 0 {
 			return g, true
@@ -442,7 +468,7 @@ func editGrid(g Grid) (Grid, bool) {
 			g.NX, g.NY = CountFor(g.X0, g.X1, sx), CountFor(g.Y0, g.Y1, sy)
 		case "sx", "sy", "s":
 			if !okA || a < 1 || a > 200 {
-				say("шаг от 1 до 200 мм\n")
+				sayBad("шаг от 1 до 200 мм")
 				continue
 			}
 			if f[0] != "sy" {
@@ -453,7 +479,7 @@ func editGrid(g Grid) (Grid, bool) {
 			}
 		case "nx", "ny":
 			if !okA || a < 1 || a > 100 || a != math.Trunc(a) {
-				say("точек от 1 до 100\n")
+				sayBad("точек от 1 до 100")
 				continue
 			}
 			if f[0] == "nx" {
@@ -465,15 +491,16 @@ func editGrid(g Grid) (Grid, bool) {
 			ok = false
 		}
 		if !ok {
-			say("не понял «%s»\n", in)
+			sayBad(fmt.Sprintf("не понял \"%s\"", in))
 		}
 		if g.NX*g.NY > 400 {
-			say("больше 400 точек - это больше часа, уменьшите\n")
+			sayWarn("больше 400 точек - это больше часа, уменьшите")
 		}
 	}
 }
 
 func cmdScan(o opts) error {
+	show(rule("3 ► Карта высот", boxW()))
 	tap, err := pickTap(exeDir())
 	if err != nil {
 		return err
@@ -482,6 +509,7 @@ func cmdScan(o opts) error {
 	if err != nil {
 		return err
 	}
+	cut := rect{g.X0, g.X1, g.Y0, g.Y1}
 	g, ok := editGrid(g)
 	if !ok {
 		return nil
@@ -491,11 +519,15 @@ func cmdScan(o opts) error {
 	if err != nil {
 		return err
 	}
-	say("МК на %s. Точек %d, примерно %.0f мин.\n", name, len(pts), float64(len(pts))*secondsPerPoint/60)
-	say("Перед стартом: в NcStudio ноль X0 Y0 стоит как для этой платы, шпиндель выключен,\n")
-	say("фреза (любая крепкая) на 1-2 мм над медью рядом с X%.1f Y%.1f.\n", pts[0][0], pts[0][1])
-	say("Не выше 2 мм: в первой точке медь ищется на %.0f мм вниз от старта.\n", o.search)
-	say("Сейчас ОБНУЛИТЕ Z в NcStudio на этой высоте: обход ведёт Z абсолютными командами от этого нуля.\n")
+	show(box(thin, "Перед стартом", []string{
+		fmt.Sprintf("МК на %s. Точек %d, примерно %.0f мин.", paint(cOK, name), len(pts), float64(len(pts))*secondsPerPoint/60),
+		"В NcStudio ноль X0 Y0 стоит как для этой платы, шпиндель выключен,",
+		fmt.Sprintf("фреза (любая крепкая) на 1-2 мм над медью рядом с %s.",
+			paint(cZero, fmt.Sprintf("♦ X%.1f Y%.1f", pts[0][0], pts[0][1]))),
+		fmt.Sprintf("Не выше 2 мм: в первой точке медь ищется на %.0f мм вниз от старта.", o.search),
+		sep,
+		paint(cAlarm, "▲ Сейчас ОБНУЛИТЕ Z в NcStudio на этой высоте:") + " обход ведёт Z абсолютными командами от этого нуля.",
+	}, boxW()))
 	if !yes("Z обнулён, начать?") {
 		return nil
 	}
@@ -513,37 +545,49 @@ func cmdScan(o opts) error {
 	}
 	sc := newScanner(o, nc, m)
 	sc.Predict = true // nc.Abs above
+	start, done := time.Now(), 0
+	sc.Log = func(l string) {
+		done++
+		left := ""
+		if done < len(pts) {
+			rest := time.Since(start) / time.Duration(done) * time.Duration(len(pts)-done)
+			left = paint(cHint, fmt.Sprintf("  ещё ~%.0f мин", math.Ceil(rest.Minutes())))
+		}
+		show([]string{bar(done, len(pts), 12) + " " + l + left})
+	}
 	rows, err := sc.Grid(pts, func(p Point) {
 		fmt.Fprintf(f, "%.3f,%.3f,%.4f\n", p.X, p.Y, p.Z)
 		f.Sync()
 	})
 	if err != nil {
-		say("\nОСТАНОВ: %v\n", err)
+		say("\n")
+		sayStop(err)
 		if yes("поднять фрезу на 1 мм (NcStudio снова получит фокус)?") && nc.Grab() == nil {
 			nc.RapidZ(nc.z + o.clear)
 		}
 		return fmt.Errorf("карта не досняна, scan.csv содержит измеренные точки")
 	}
-	say("Повторное касание первой точки: насколько всё уехало за время обхода...\n")
+	sayHint("Повторное касание первой точки: насколько всё уехало за время обхода...")
 	drift, err := sc.Recheck(rows)
 	if err != nil {
 		return fmt.Errorf("повторное касание не удалось, карте верить нельзя: %v", err)
 	}
 	fmt.Fprintf(f, "# повторное касание первой точки: сдвиг %+.4f мм\n", drift)
 	hm, _ := MapFromPoints(rows)
-	say("%s", hm.Table())
-	say("Сдвиг первой точки за обход: %+.3f мм\n", drift)
+	showMap(hm, &cut)
+	tell("Сдвиг первой точки за обход: %s мм", paint(cTitle, fmt.Sprintf("%+.3f", drift)))
 	if math.Abs(drift) > 0.03 {
-		say("ВНИМАНИЕ: больше 0.03 мм. Ось Z уходит во время работы или станок пропускает команды:\n")
-		say("по этой карте резать нельзя. Проверьте механику Z и повторите.\n")
+		sayWarn("больше 0.03 мм. Ось Z уходит во время работы или станок пропускает команды: " +
+			"по этой карте резать нельзя. Проверьте механику Z и повторите.")
 	} else {
-		say("Сдвиг в норме, карте можно верить.\n")
+		sayOK("Сдвиг в норме, карте можно верить.")
 	}
-	say("Карта записана: %s\n", out)
+	sayOK("Карта записана: " + out)
 	return nil
 }
 
 func cmdZero(o opts) error {
+	show(rule("4 ► Z0 на меди после смены фрезы", boxW()))
 	// Z0 goes where the map has its zero: the first point of scan.csv, whatever grid it used
 	var first [2]float64
 	if rows, e := LoadPoints(filepath.Join(exeDir(), "scan.csv")); e == nil && len(rows) > 0 {
@@ -558,15 +602,18 @@ func cmdZero(o opts) error {
 			return err
 		}
 		first = g.Points()[0]
-		say("scan.csv нет, беру первую точку сетки по программе\n")
+		sayHint("scan.csv нет, беру первую точку сетки по программе")
 	}
 	pts := [][2]float64{first}
 	m, _, err := findMCU(o.port)
 	if err != nil {
 		return err
 	}
-	say("Фреза 0.1 стоит на 1-2 мм над медью. Будет одно медленное касание в X%.2f Y%.2f\n", pts[0][0], pts[0][1])
-	say("(первая точка карты), потом нужно обнулить Z в NcStudio.\n")
+	show(box(thin, "Что будет", []string{
+		"Фреза 0.1 стоит на 1-2 мм над медью. Будет одно медленное касание в " +
+			paint(cZero, fmt.Sprintf("♦ X%.2f Y%.2f", pts[0][0], pts[0][1])) + " (первая точка карты),",
+		"потом нужно обнулить Z в NcStudio.",
+	}, boxW()))
 	if !yes("начать?") {
 		return nil
 	}
@@ -583,7 +630,8 @@ func cmdZero(o opts) error {
 	if err := nc.MoveZ(z, 20); err != nil {
 		return err
 	}
-	ask("Фреза касается меди. Обнулите Z в NcStudio (рабочая система координат), затем Enter здесь... ")
+	show(note("♦", cTouch, "КОНТАКТ:", "фреза касается меди.", boxW()))
+	prompt("Обнулите Z в NcStudio (рабочая система координат), затем Enter здесь... ")
 	nc.ResetZ()
 	if err := nc.Grab(); err != nil {
 		return err
@@ -591,11 +639,12 @@ func cmdZero(o opts) error {
 	if err := nc.RapidZ(o.clear * 3); err != nil {
 		return err
 	}
-	say("Z0 стоит на меди в первой точке карты. Теперь пункт 5 и запуск *_level.tap.\n")
+	sayOK("Z0 стоит на меди в первой точке карты. Теперь пункт 5 и запуск *_level.tap.")
 	return nil
 }
 
 func cmdLevel(o opts) error {
+	show(rule("5 ► Выровнять программу по карте", boxW()))
 	pts, err := LoadPoints(filepath.Join(exeDir(), "scan.csv"))
 	if err != nil {
 		return fmt.Errorf("нет scan.csv: сначала снимите карту (%v)", err)
@@ -620,17 +669,24 @@ func cmdLevel(o opts) error {
 	if err := os.WriteFile(dst, []byte(strings.Join(out, "\r\n")+"\r\n"), 0644); err != nil {
 		return err
 	}
-	say("%s", hm.Table())
-	say("Готово: %s\n", filepath.Base(dst))
+	var cut *rect
+	if x0, x1, y0, y1, e := CutBounds(lines); e == nil {
+		cut = &rect{x0, x1, y0, y1}
+	}
+	showMap(hm, cut)
+	sayOK("Готово: " + filepath.Base(dst))
 	return nil
 }
 
 // cmdFindCoords: can this program read the X/Y/Z NcStudio shows? Snapshot the text
 // of every NcStudio control, move each axis by 1 mm, and see which texts change.
 func cmdFindCoords(o opts) error {
-	say("Программа ищет, откуда можно читать координаты NcStudio.\n")
-	say("Станок сдвинется: Z вверх на 1 мм, X на +1, Y на +1, и вернётся обратно.\n")
-	say("Фреза должна быть поднята над платой, шпиндель стоять.\n")
+	show(rule("7 ► Откуда читать координаты NcStudio", boxW()))
+	show(box(thin, "Что будет", []string{
+		"Программа ищет, откуда можно читать координаты NcStudio.",
+		"Станок сдвинется: Z вверх на 1 мм, X на +1, Y на +1, и вернётся обратно.",
+		paint(cHint, "Фреза должна быть поднята над платой, шпиндель стоять."),
+	}, boxW()))
 	if !yes("начать?") {
 		return nil
 	}
@@ -679,7 +735,7 @@ func cmdFindCoords(o opts) error {
 				line := fmt.Sprintf("после %s+1 изменилось: %s id %d (%d,%d)  %q -> %q",
 					ax, w.Class, w.ID, w.Left, w.Top, p.Text, w.Text)
 				fmt.Fprintf(f, "%s\r\n", line)
-				say("  %s\n", line)
+				show(wrap("  "+line, boxW(), 4))
 			}
 		}
 		prev = cur
@@ -689,283 +745,44 @@ func cmdFindCoords(o opts) error {
 		nc.cmd("G91 G00 Z-1", 1.0)
 	}
 	if found == 0 {
-		say("Ни один текст не изменился: NcStudio рисует цифры картинкой, читать придётся с экрана.\n")
+		sayWarn("ни один текст не изменился: NcStudio рисует цифры картинкой, читать придётся с экрана.")
 	} else {
-		say("Координаты читаются как текст.\n")
+		sayOK("Координаты читаются как текст.")
 	}
-	say("Всё записано в %s, пришлите этот файл.\n", out)
+	tell("Всё записано в %s, пришлите этот файл.", out)
 	return nil
 }
 
-// HotLift is what readLine returns for PageUp: lift at once, no Enter needed.
-const HotLift = "\x01lift"
-
-// Arrow keys, also without Enter: move X/Y by the current step.
-const (
-	HotLeft  = "\x01x-"
-	HotRight = "\x01x+"
-	HotUp    = "\x01y+"
-	HotDown  = "\x01y-"
-)
-
-// cmdManual: the operator drives NcStudio through this program step by step,
-// to see that keystrokes land and the MCU reports contact before any scan.
-func cmdManual(o opts) error {
-	var m *MCU
-	if yes("подключить МК (показывать касание)?") {
-		var name string
-		var err error
-		if m, name, err = findMCU(o.port); err != nil {
-			return err
-		}
-		say("МК на %s\n", name)
-	}
-	nc := newNc(o)
-	step, stepX, stepY, stepFast := 0.1, 1.0, 1.0, 1.0
-	say("Команды (Enter после каждой):\n")
-	say("  u      Z вверх на шаг        d   Z вниз на шаг (медленно)\n")
-	say("  uu dd  Z быстро на шаг sz    t   опустить до меди (медленно, с касанием)\n")
-	say("  x+ x-  X на шаг X            y+ y-  Y на шаг Y\n")
-	say("  s 0.05 шаг по Z, мм          sz 2   шаг быстрого Z, мм\n")
-	say("  sx 5   шаг по X, мм          sy 5   шаг по Y, мм\n")
-	say("  t 5    искать медь не глубже 5 мм (без числа: %.1f мм)\n", o.search)
-	say("  ?      есть ли касание\n")
-	say("  m x5 y-2.5 z1  сдвинуть на любую величину (любые из X Y Z)\n")
-	say("  g ...  любая строка G-кода как есть, например: g G91 G00 X5\n")
-	say("  q      назад в меню\n")
-	say("  Стрелки (без Enter)  X/Y на шаг sx/sy;  PageUp  быстро поднять Z на шаг sz\n")
-	say("Пока команда печатается в NcStudio, мышь и клавиатуру не трогать.\n")
-	say("Щелчок мышью по любому другому окну во время движения = стоп.\n")
-	touching := func() bool { return m != nil && m.State() }
-	for {
-		raw := ask(fmt.Sprintf("[Z %.3f, быстрый Z %.1f, X %.2f, Y %.2f; Z %+.3f от старта] > ",
-			step, stepFast, stepX, stepY, nc.z))
-		in := latin(raw)
-		if strings.HasPrefix(raw, "\x01") {
-			in = raw[1:] // PageUp or an arrow
-		}
-		moving := in == "u" || in == "d" || in == "uu" || in == "dd" || strings.HasPrefix(in, "g ") ||
-			in == "x+" || in == "x-" || in == "y+" || in == "y-" || in == "t" || strings.HasPrefix(in, "t ") ||
-			strings.HasPrefix(in, "m ")
-		if moving && m != nil {
-			if e := m.Alive(); e != nil {
-				say("не двигаю: %v\n", e)
-				continue
-			}
-		}
-		var err error
-		switch {
-		case in == "q":
-			return nil
-		case in == "lift":
-			// going up is the way out of trouble: done even when the MCU is silent
-			say("быстрый подъём на %.1f мм\n", stepFast)
-			if err = nc.Grab(); err == nil {
-				err = nc.RapidZ(nc.z + stepFast)
-			}
-		case in == "u":
-			if err = nc.Grab(); err == nil {
-				err = nc.RapidZ(nc.z + step)
-			}
-		case in == "d" || in == "dd":
-			if touching() {
-				say("фреза касается меди: вниз нельзя, сначала u\n")
-				continue
-			}
-			if err = nc.Grab(); err == nil {
-				if in == "d" {
-					err = nc.MoveZ(nc.z-step, 20)
-				} else {
-					err = nc.MoveZ(nc.z-stepFast, 600)
-				}
-			}
-		case in == "uu":
-			if err = nc.Grab(); err == nil {
-				err = nc.RapidZ(nc.z + stepFast)
-			}
-		case strings.HasPrefix(in, "m "):
-			var dx, dy, dz float64
-			if dx, dy, dz, err = parseShift(in[2:]); err != nil {
-				say("%v\n", err)
-				continue
-			}
-			if touching() && dz <= 0 { // up comes first in shift, so lifting off is allowed
-				say("фреза касается меди: сначала поднимите Z (m z0.5)\n")
-				continue
-			}
-			if err = nc.Grab(); err == nil {
-				err = shift(nc, dx, dy, dz)
-			}
-		case in == "t" || strings.HasPrefix(in, "t "):
-			depth := o.search
-			if in != "t" {
-				if _, e := fmt.Sscan(in[2:], &depth); e != nil || depth <= 0 || depth > 20 {
-					say("глубина поиска от 0.1 до 20 мм\n")
-					continue
-				}
-			}
-			if m == nil {
-				say("без МК касание не увидеть: выйдите в меню и подключите МК\n")
-				continue
-			}
-			if touching() {
-				say("фреза уже касается меди\n")
-				continue
-			}
-			if err = nc.Grab(); err == nil {
-				err = lowerToCopper(o, nc, m, depth)
-			}
-		case strings.HasPrefix(in, "sz "):
-			var v float64
-			if _, e := fmt.Sscan(in[3:], &v); e == nil && v > 0 && v <= 50 {
-				stepFast = v
-			} else {
-				say("шаг быстрого Z от 0.1 до 50 мм\n")
-			}
-			continue
-		case in == "x+" || in == "x-" || in == "y+" || in == "y-":
-			if touching() {
-				say("фреза касается меди: сначала u, потом двигать по X/Y\n")
-				continue
-			}
-			d := stepX
-			if in[0] == 'y' {
-				d = stepY
-			}
-			if in[1] == '-' {
-				d = -d
-			}
-			if err = nc.Grab(); err == nil {
-				if in[0] == 'x' {
-					err = nc.MoveXYRel(d, 0)
-				} else {
-					err = nc.MoveXYRel(0, d)
-				}
-			}
-		case strings.HasPrefix(in, "sx ") || strings.HasPrefix(in, "sy "):
-			var v float64
-			if _, e := fmt.Sscan(in[3:], &v); e == nil && v > 0 && v <= 300 {
-				if in[1] == 'x' {
-					stepX = v
-				} else {
-					stepY = v
-				}
-			} else {
-				say("шаг по X/Y от 0.01 до 300 мм\n")
-			}
-			continue
-		case strings.HasPrefix(in, "s "):
-			var v float64
-			if _, e := fmt.Sscan(in[2:], &v); e == nil && v > 0 && v <= 5 {
-				step = v
-			} else {
-				say("шаг от 0.001 до 5 мм\n")
-			}
-			continue
-		case strings.HasPrefix(in, "g "):
-			line := strings.ToUpper(strings.TrimSpace(raw[2:]))
-			if !yes("отправить в NcStudio «" + line + "»?") {
-				continue
-			}
-			if err = nc.Grab(); err == nil {
-				err = nc.cmd(line, 1.0) // our Z count no longer matches after a free-form line
-			}
-		case in == "?" || in == "":
-		default:
-			say("не понял «%s»\n", raw)
-			continue
-		}
-		if err != nil {
-			say("ОСТАНОВ: %v\n", err)
-		}
-		if m != nil {
-			if e := m.Alive(); e != nil {
-				say("  %v\n", e)
-			} else if m.State() {
-				say("  КОНТАКТ\n")
-			} else {
-				say("  разомкнуто\n")
-			}
-		}
-	}
+// showMap: the table picture, then the same map in numbers.
+func showMap(hm *HeightMap, cut *rect) {
+	say("\n")
+	show(rule("Карта высот, вид сверху", boxW()))
+	showMid(heightView(hm, cut, mapW()))
+	say("\n")
+	show(heightTable(hm, boxW()))
 }
 
-// parseShift reads "x5 y-2.5 z1" (any of the three, in any order) as relative mm.
-func parseShift(s string) (dx, dy, dz float64, err error) {
-	f := strings.Fields(strings.ReplaceAll(s, ",", "."))
-	if len(f) == 0 {
-		return 0, 0, 0, fmt.Errorf("пример: m x5 y-2.5 z1")
-	}
-	seen := map[byte]bool{}
-	for _, w := range f {
-		if len(w) < 2 || seen[w[0]] {
-			return 0, 0, 0, fmt.Errorf("не понял «%s», пример: m x5 y-2.5 z1", w)
-		}
-		seen[w[0]] = true
-		v, e := strconv.ParseFloat(w[1:], 64)
-		if e != nil || math.IsNaN(v) || math.IsInf(v, 0) {
-			return 0, 0, 0, fmt.Errorf("не число в «%s»", w)
-		}
-		switch w[0] {
-		case 'x':
-			dx = v
-		case 'y':
-			dy = v
-		case 'z':
-			dz = v
-		default:
-			return 0, 0, 0, fmt.Errorf("оси только x, y, z: «%s»", w)
-		}
-	}
-	if math.Abs(dx) > 600 || math.Abs(dy) > 600 || math.Abs(dz) > 50 {
-		return 0, 0, 0, fmt.Errorf("слишком далеко: X/Y до 600 мм, Z до 50 мм")
-	}
-	return dx, dy, dz, nil
+var mainMenu = []menuItem{
+	{"1", "проверить провод (МК)"},
+	{"2", "проверить связь с NcStudio (Z вверх-вниз на 1 мм)"},
+	{sep, ""},
+	{"3", paint(cTitle, "снять карту высот")},
+	{"4", "после смены фрезы: Z0 на меди"},
+	{"5", "выровнять программу по карте"},
+	{sep, ""},
+	{"6", "ручной режим: сами шлёте команды в NcStudio"},
+	{"7", "найти, откуда читать координаты NcStudio"},
+	{sep, ""},
+	{"0", "выход"},
 }
 
-// shift moves so the tool never sweeps sideways low: up first, then X/Y, then down.
-// Going down is G01 at 600 mm/min, as dd.
-func shift(nc *NcStudio, dx, dy, dz float64) error {
-	if dz > 0 {
-		if err := nc.RapidZ(nc.z + dz); err != nil {
-			return err
-		}
+// status is what the main screen shows above the menu.
+func status(o opts) Status {
+	st := Status{MCU: mcuStateOf(mcuCache), Nc: ncFound(o.title)}
+	if mcuCache != nil {
+		st.Port = mcuName
 	}
-	if dx != 0 || dy != 0 {
-		if err := nc.MoveXYRel(dx, dy); err != nil {
-			return err
-		}
-	}
-	if dz < 0 {
-		return nc.MoveZ(nc.z+dz, 600)
-	}
-	return nil
-}
-
-// lowerToCopper goes down in short steps until the MCU reports contact, then
-// backs off and finds it again with fine steps; the tool stays touching the copper.
-func lowerToCopper(o opts, nc *NcStudio, m Touch, depth float64) error {
-	s := newScanner(o, nc, m)
-	s.Log = func(string) {}
-	z, ok, err := s.stepDown(depth, s.StepCoarse, s.FeedCoarse)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return fail("медь не найдена на %.2f мм ниже: зажим не на меди или нужно глубже (t 5)", depth)
-	}
-	if err := s.liftUntilOpen(z, s.StepCoarse); err != nil {
-		return err
-	}
-	zf, ok, err := s.stepDown(s.StepCoarse*3, s.StepFine, s.FeedFine)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return fail("повторное касание не случилось")
-	}
-	say("медь на Z %+.3f от старта ручного режима\n", zf)
-	return nil
+	return st
 }
 
 func main() {
@@ -982,24 +799,23 @@ func main() {
 	flag.BoolVar(&o.keep, "keep", false, "окно ввода команды в NcStudio не закрывается после Enter")
 	flag.Float64Var(&o.rapid, "rapid", 1500, "скорость G00 в NcStudio, мм/мин")
 	flag.IntVar(&o.settle, "settle", 350, "пауза на каждую команду, мс")
+	flag.BoolVar(&o.nolayout, "nolayout", false, "не ставить NcStudio на левую половину экрана, а pcbscan на правую")
 	flag.Parse()
 	if err := ValidKeys(o.mdiKey); err != nil {
-		say("%v\n", err)
+		sayStop(err)
 		return
+	}
+	if !o.nolayout {
+		layoutWindows(o.title)
 	}
 
 	for {
-		say("\npcbscan — карта высот для NcStudio\n")
-		say("  1  проверить провод (МК)\n")
-		say("  2  проверить связь с NcStudio (Z вверх-вниз на 1 мм)\n")
-		say("  3  снять карту высот\n")
-		say("  4  после смены фрезы: Z0 на меди\n")
-		say("  5  выровнять программу по карте\n")
-		say("  6  ручной режим: сами шлёте команды в NcStudio\n")
-		say("  7  найти, откуда читать координаты NcStudio\n")
-		say("  0  выход\n")
+		say("\n")
+		show(banner(boxW()))
+		show(statusLine(status(o), boxW()))
+		show(menu("Меню", mainMenu, boxW()))
 		var err error
-		switch ask("> ") {
+		switch prompt("пункт: ") {
 		case "1":
 			err = cmdWire(o)
 		case "2":
@@ -1018,7 +834,8 @@ func main() {
 			return
 		}
 		if err != nil {
-			say("\nОСТАНОВ: %v\n", err)
+			say("\n")
+			sayStop(err)
 		}
 	}
 }
