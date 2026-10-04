@@ -437,7 +437,7 @@ func cmdManual(o opts) error {
 	s.p.scene = jobToolScene()
 	s.p.extra = s.panel
 	s.p.onKey = s.onKey
-	s.p.btns = []pageBtn{{id: "q", label: "Выход", kind: ui.BtnNormal}}
+	s.p.btns = []pageBtn{{id: "q", label: "Готово", kind: ui.BtnNormal}}
 	app.Show(s.p)
 	logLine("Пока команда печатается в NcStudio, мышь и клавиатуру не трогать.")
 	if name != "" {

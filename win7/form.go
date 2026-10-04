@@ -149,8 +149,24 @@ func (f *numForm) choose(i int) {
 func (f *numForm) Draw(c *ui.Ctx) {
 	t := c.T
 	f.keys(c) // before the fields: the arrows step values, they do not move the caret
-	body := ui.Inset(chrome(c, f.crumb), t.Si(16))
 	var left, right image.Rectangle
+	if mid, view, ok := shell(c, f.crumb); ok {
+		left = mid
+		var sc ui.Scene
+		if f.scene != nil {
+			sc = f.scene()
+		}
+		hit := drawShellView(c, view, sc, false)
+		if hit.Click && f.pick != nil {
+			if p, ok := hit.Cam.PickPlane(hit.X, hit.Y, hit.W, hit.H, 0); ok {
+				f.edit = nil
+				f.pick(p.X, p.Y)
+			}
+		}
+		f.drawCard(c, left)
+		return
+	}
+	body := ui.Inset(chrome(c, f.crumb), t.Si(16))
 	if f.scene != nil && body.Dx() > t.Si(760) {
 		lw := imin(t.Si(500), body.Dx()*9/20)
 		left = ui.CutLeft(&body, lw)
@@ -174,8 +190,14 @@ func (f *numForm) Draw(c *ui.Ctx) {
 			}
 		}
 	}
+	f.drawCard(c, left)
+}
+
+// drawCard: the title, the fields, the lines and the buttons of the form.
+func (f *numForm) drawCard(c *ui.Ctx, left image.Rectangle) {
+	t := c.T
 	c.Card(left)
-	in := ui.Inset(left, t.Si(20))
+	in := ui.Inset(left, t.Si(16))
 	c.LabelIn(ui.CutTop(&in, t.Si(30)), f.title, ui.Style{Kind: ui.Bold, Size: ui.SizeTitle, Color: t.Text}, 0)
 	ui.CutTop(&in, t.Si(8))
 	// the buttons

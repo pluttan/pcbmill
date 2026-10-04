@@ -154,7 +154,7 @@ func TestCamForm(t *testing.T) {
 	done := make(chan bool)
 	go func() { jobMain(opts{sim: true}); close(done) }()
 	waitText(t, "Числа программ")
-	sendKeys(d, ui.KeyRight) // into Платы, on Выбрать платы
+	sendKeys(d, ui.KeyRight) // into Платы, on the heading Платы на листе
 	down := func(n int) {
 		for i := 0; i < n; i++ {
 			sendKeys(d, ui.KeyDown)

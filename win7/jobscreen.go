@@ -36,6 +36,7 @@ func jobMain(o opts) {
 	}
 	mainActs = make(chan func() error, 1)
 	theJob = u
+	defer func() { theJob = nil }()
 	u.sel[0], u.sel[1] = u.next(), 0
 	for !u.quit {
 		simFit(j.W, j.H) // the virtual blank follows the sheet
@@ -70,31 +71,14 @@ func (u *jobUI) do(act func() error) {
 }
 
 func (u *jobUI) Draw(c *ui.Ctx) {
-	t := c.T
 	roots, kids := u.lists()
 	title := "задание"
 	if u.lvl == 1 {
 		title = "задание / " + roots[u.sel[0]].title
 	}
-	body := ui.Inset(chrome(c, title), t.Si(16))
-	narrow := body.Dx() < t.Si(980)
-	railW := t.Si(236)
-	if narrow {
-		railW = t.Si(74)
-	}
-	rail := ui.CutLeft(&body, railW)
-	ui.CutLeft(&body, t.Si(14))
-	midW := t.Si(340)
-	if body.Dx() > t.Si(960) {
-		midW = t.Si(390) // room for a number with its − and +
-	}
-	if body.Dx() < t.Si(700) {
-		midW = body.Dx() * 3 / 5 // the numbers in the lines need the room more than the picture
-	}
-	mid := ui.CutLeft(&body, midW)
-	ui.CutLeft(&body, t.Si(14))
-	view := body
-	u.drawRail(c, rail, roots, narrow)
+	rail, mid, view, narrow := mainLayout(c, title)
+	u.rail = roots // for the work pages, drawn on this goroutine
+	u.drawRail(c, rail, roots, narrow, true)
 	cur := roots[u.sel[0]]
 	if len(kids) > 0 {
 		cur = kids[u.sel[1]]
@@ -105,7 +89,65 @@ func (u *jobUI) Draw(c *ui.Ctx) {
 	u.keys(c, roots, kids)
 }
 
-func (u *jobUI) drawRail(c *ui.Ctx, r image.Rectangle, roots []jnode, narrow bool) {
+// mainLayout: the stages, the middle column and the picture; every screen of
+// the job has them in the same places.
+func mainLayout(c *ui.Ctx, title string) (rail, mid, view image.Rectangle, narrow bool) {
+	t := c.T
+	body := ui.Inset(chrome(c, title), t.Si(16))
+	narrow = body.Dx() < t.Si(980)
+	railW := t.Si(236)
+	if narrow {
+		railW = t.Si(74)
+	}
+	rail = ui.CutLeft(&body, railW)
+	ui.CutLeft(&body, t.Si(14))
+	midW := t.Si(340)
+	if body.Dx() > t.Si(960) {
+		midW = t.Si(390) // room for a number with its − and +
+	}
+	if body.Dx() < t.Si(700) {
+		midW = body.Dx() * 3 / 5 // the numbers in the lines need the room more than the picture
+	}
+	mid = ui.CutLeft(&body, midW)
+	ui.CutLeft(&body, t.Si(14))
+	return rail, mid, body, narrow
+}
+
+// shell: a work page or a form in the frame of the job screen: the stages
+// on the left as they were (not clickable while the work goes on), the page
+// in the middle, the picture on the right. False outside a job.
+func shell(c *ui.Ctx, title string) (mid, view image.Rectangle, ok bool) {
+	u := theJob
+	if u == nil || len(u.rail) == 0 {
+		return mid, view, false
+	}
+	rail, mid, view, narrow := mainLayout(c, title)
+	u.drawRail(c, rail, u.rail, narrow, false)
+	return mid, view, true
+}
+
+// drawShellView: the picture of a page in the frame: its own scene, else the
+// one the job screen showed last (so it stays put, camera and all).
+func drawShellView(c *ui.Ctx, r image.Rectangle, sc ui.Scene, own bool) ui.ViewHit {
+	t := c.T
+	c.Card(r)
+	in := ui.Inset(r, t.Si(1))
+	if sc == nil && !own && theJob != nil {
+		sc = theJob.scene
+	}
+	if sc == nil {
+		c.Icon(ui.IconBoards, ui.Center(in, t.Si(64), t.Si(64)), t.Surface2)
+		return ui.ViewHit{}
+	}
+	id := "main/sheet" // one camera with the job screen
+	if _, ok := sc.(*mapScene); ok {
+		id = "main/map"
+	}
+	return c.View3D(id, in, sc)
+}
+
+// drawRail: the stages; live: a click chooses one.
+func (u *jobUI) drawRail(c *ui.Ctx, r image.Rectangle, roots []jnode, narrow, live bool) {
 	t := c.T
 	c.Panel(r, t.Crust)
 	in := ui.Inset(r, t.Si(8))
@@ -118,7 +160,13 @@ func (u *jobUI) drawRail(c *ui.Ctx, r image.Rectangle, roots []jnode, narrow boo
 		if i == len(roots)-1 && rr.Max.Y < in.Max.Y { // Выход at the bottom
 			rr = image.Rect(in.Min.X, in.Max.Y-rowH, in.Max.X, in.Max.Y)
 		}
-		if c.Row(fmt.Sprintf("rail/%d", i), rr, i == u.sel[0]) {
+		if !live {
+			if i == u.sel[0] {
+				x, y, w, h := float64(rr.Min.X), float64(rr.Min.Y), float64(rr.Dx()), float64(rr.Dy())
+				c.C.FillRoundRect(x, y, w, h, t.S(7), t.Surface0)
+				c.C.FillRoundRect(x+t.S(3), y+h*0.22, t.S(3), h*0.56, t.S(1.5), t.Lavender)
+			}
+		} else if c.Row(fmt.Sprintf("rail/%d", i), rr, i == u.sel[0]) {
 			u.sel[0], u.sel[1] = i, 0
 			u.lvl = 1
 			if !n.branch && n.act != nil {
@@ -297,15 +345,17 @@ func (u *jobUI) drawView(c *ui.Ctx, r image.Rectangle, root, cur jnode) {
 	c.Card(r)
 	in := ui.Inset(r, t.Si(1))
 	if len(u.j.Places) == 0 {
+		u.scene = nil
 		c.Icon(ui.IconBoards, ui.Center(in, t.Si(64), t.Si(64)), t.Surface2)
 		c.LabelIn(image.Rect(in.Min.X, in.Min.Y+in.Dy()/2+t.Si(44), in.Max.X, in.Min.Y+in.Dy()/2+t.Si(70)),
 			"Платы ещё не выбраны", ui.Style{Kind: ui.Bold, Size: ui.SizeLarge, Color: t.Subtext0}, 1)
 		c.LabelIn(image.Rect(in.Min.X, in.Min.Y+in.Dy()/2+t.Si(72), in.Max.X, in.Min.Y+in.Dy()/2+t.Si(96)),
-			"Платы / Выбрать платы", c.Muted(), 1)
+			"Платы / Платы на листе: сколько штук каждой", c.Muted(), 1)
 		return
 	}
 	if (cur.mapView || (root.mapView && u.lvl == 0)) && u.hm != nil {
-		c.View3D("main/map", in, newMapScene(u.hm, u.hmPts, u.j, u.mirror()))
+		u.scene = newMapScene(u.hm, u.hmPts, u.j, u.mirror())
+		c.View3D("main/map", in, u.scene)
 		return
 	}
 	var ov sheetOverlay
@@ -318,6 +368,7 @@ func (u *jobUI) drawView(c *ui.Ctx, r image.Rectangle, root, cur jnode) {
 	if _, err := u.jmap(); err == nil && u.hm != nil && root.title != "Платы" {
 		sc.hm = nil // the map has its own view; the sheet stays flat and true
 	}
+	u.scene = sc
 	c.View3D("main/sheet", in, sc)
 }
 

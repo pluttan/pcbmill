@@ -53,6 +53,8 @@ type jobUI struct {
 	focused  string // the field the screen gave the keys to
 	editF    formField
 	msg      string
+	rail     []jnode  // the stages as last drawn, for the work pages
+	scene    ui.Scene // the picture as last drawn, for the pages without their own
 	cache    struct {
 		gen, sel0 int
 		roots     []jnode
@@ -103,6 +105,9 @@ func (u *jobUI) lists() ([]jnode, []jnode) {
 	}
 	if u.sel[1] < 0 {
 		u.sel[1] = 0
+	}
+	for k := u.cache.kids; u.sel[1]+1 < len(k) && k[u.sel[1]].head; { // a heading is not a line to stand on
+		u.sel[1]++
 	}
 	return u.cache.roots, u.cache.kids
 }
@@ -205,11 +210,10 @@ func (u *jobUI) kids(i int) []jnode {
 	j, o := u.j, u.o
 	switch i {
 	case 0:
-		out := []jnode{
-			{icon: "·", title: "Выбрать платы", act: u.pickBoards,
-				about: []string{"Zip или папки из KiCad, EasyEDA, Eagle рядом с pcbscan.exe, у каждой - сколько штук."}},
+		if !u.changed() { // nothing waits for Разложить: boards just put next to the exe show up
+			u.pendS.set = false
 		}
-		out = append(out, u.boardRows()...)
+		out := u.boardRows()
 		out = append(out, u.sheetRows()...)
 		lay := jnode{icon: "·", title: "Разложить и посчитать", act: u.layout,
 			about: []string{"Платы сами встанут на лист, потом программы всех этапов."}}

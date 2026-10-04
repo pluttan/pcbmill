@@ -27,6 +27,7 @@ type page struct {
 	progress    float64 // 0..1, below 0: none
 	progText    string
 	scene       ui.Scene
+	ownView     bool                                   // the job changes under the page: no picture of it until done
 	big         func(c *ui.Ctx, r image.Rectangle)     // a panel instead of the journal (the wire check)
 	extra       func(c *ui.Ctx, r image.Rectangle) int // widgets under the lines, returns the height used
 	need        int                                    // the height the card took last frame (stacked layout)
@@ -39,8 +40,14 @@ type page struct {
 var cur *page
 
 // newPage shows a page with lines about it.
-func newPage(title string, info ...string) *page {
-	p := &page{title: title, info: info, progress: -1, acts: make(chan string, 8)}
+func newPage(title string, info ...string) *page { return showPage(false, title, info...) }
+
+// newBusyPage: a page while the work changes the job itself (the layout):
+// the picture of the sheet waits until the job screen is back.
+func newBusyPage(title string, info ...string) *page { return showPage(true, title, info...) }
+
+func showPage(busy bool, title string, info ...string) *page {
+	p := &page{title: title, info: info, progress: -1, acts: make(chan string, 8), ownView: busy}
 	crumb = title
 	cur = p
 	if app != nil {
@@ -64,11 +71,23 @@ func (p *page) buttons(bs ...pageBtn) { p.set(func() { p.btns = bs }) }
 // ask shows the buttons and waits for one; its id.
 func (p *page) ask(bs ...pageBtn) string {
 	p.drain()
+	railNow()
 	p.buttons(bs...)
 	backToApp()
 	id := <-p.acts
 	p.buttons()
 	return id
+}
+
+// railNow: the stages beside a page as the work has left them (the map
+// taken, a program done), built here on the work goroutine.
+func railNow() {
+	u := theJob
+	if u == nil || app == nil {
+		return
+	}
+	r := u.roots()
+	app.Do(func() { u.rail = r })
 }
 
 // drain forgets buttons pressed before the question.
@@ -171,6 +190,11 @@ func drawLines(c *ui.Ctx, r image.Rectangle, y int, ls []string, st ui.Style) in
 
 func (p *page) Draw(c *ui.Ctx) {
 	t := c.T
+	if mid, view, ok := shell(c, p.title); ok {
+		drawShellView(c, view, p.scene, p.ownView)
+		p.drawCard(c, mid)
+		return
+	}
 	body := chrome(c, p.title)
 	body = ui.Inset(body, t.Si(16))
 	var left, right image.Rectangle
@@ -207,15 +231,27 @@ func (p *page) Draw(c *ui.Ctx) {
 		c.Card(right)
 		c.View3D("page/view", ui.Inset(right, t.Si(1)), p.scene)
 	}
+	p.drawCard(c, left)
+}
+
+// drawCard: the head, the lines, the journal and the buttons of the page.
+func (p *page) drawCard(c *ui.Ctx, left image.Rectangle) {
+	t := c.T
 	c.Card(left)
 	in := ui.Inset(left, t.Si(20))
 	// the buttons at the bottom
 	if len(p.btns) > 0 {
+		// right to left; what does not fit goes a row up
 		foot := ui.CutBottom(&in, t.Si(40))
 		x := foot.Max.X
 		for i := len(p.btns) - 1; i >= 0; i-- {
 			b := p.btns[i]
-			bw := c.Measure(b.label, c.Body()) + t.Si(40)
+			bw := c.Measure(b.label, c.Body()) + t.Si(32)
+			if x-bw < in.Min.X && x < foot.Max.X {
+				ui.CutBottom(&in, t.Si(10))
+				foot = ui.CutBottom(&in, t.Si(40))
+				x = foot.Max.X
+			}
 			x -= bw
 			br := image.Rect(x, foot.Min.Y, x+bw, foot.Max.Y)
 			if c.ButtonX("page/"+b.id, br, b.label, b.kind, true, b.key == ui.KeyEnter) || (b.key != ui.KeyNone && c.Pressed(b.key)) {

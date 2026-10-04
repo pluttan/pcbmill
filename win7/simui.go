@@ -113,8 +113,8 @@ func simPanel(c *ui.Ctx, r image.Rectangle) int {
 	}
 	y += t.Si(8)
 	bw, bh := simSize()
-	c.Label(r.Min.X, y, fmt.Sprintf("Заготовка размером с лист задания: %sx%s мм и 1 мм вокруг, перекос и бугор; вне её меди нет.", num(bw), num(bh)), c.Small())
-	y += c.LineH(c.Small())
+	y += c.Para(image.Rect(r.Min.X, y, r.Max.X, r.Max.Y),
+		fmt.Sprintf("Заготовка размером с лист задания: %sx%s мм и 1 мм вокруг, перекос и бугор; вне её меди нет.", num(bw), num(bh)), c.Small())
 	return y - r.Min.Y
 }
 

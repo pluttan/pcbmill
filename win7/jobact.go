@@ -18,63 +18,12 @@ import (
 // ===  Actions           ===
 // ==========================
 
-// pickBoards: the boards next to the exe with how many of each.
-func (u *jobUI) pickBoards() error {
-	srcs := boardSources(exeDir())
-	if len(srcs) == 0 {
-		message("Нет плат", "Рядом с pcbscan.exe нет файлов плат.",
-			"Положите туда zip, который KiCad, EasyEDA или Eagle делает для завода, или папку с этими файлами.")
-		return nil
-	}
-	count := make([]int, len(srcs))
-	for i, s := range srcs {
-		for _, js := range u.j.Srcs {
-			if u.j.srcPath(js) == s {
-				count[i] = js.N
-			}
-		}
-	}
-	count, ok := pickCounts(srcs, count)
-	if !ok {
-		return nil
-	}
-	u.pendS.set = false // the counts chosen here win over those in the lines
-	var chosen []jobSrc
-	for i, s := range srcs {
-		if count[i] > 0 {
-			p := s
-			if rel, err := filepath.Rel(exeDir(), s); err == nil && !strings.HasPrefix(rel, "..") {
-				p = rel
-			}
-			chosen = append(chosen, jobSrc{p, count[i]})
-		}
-	}
-	if len(chosen) == 0 {
-		message("Платы", "Ни одной платы не выбрано.")
-		return nil
-	}
-	newPage("задание / Платы", "Читаю платы...")
-	j := u.j
-	old := j.Srcs
-	j.Srcs, j.boards = chosen, nil
-	if err := j.loadBoards(); err != nil {
-		j.Srcs, j.boards = old, nil
-		j.loadBoards()
-		return err
-	}
-	return u.layout()
-}
-
 // layout puts the boards on the sheet again and makes the programs; a map
 // and marks of done work of the old layout go, after a question.
 func (u *jobUI) layout() error {
 	j := u.j
-	if len(j.Srcs) == 0 {
-		message("Платы", "Сначала выберите платы.")
-		return nil
-	}
-	if u.pendS.set && u.boardsLeft() == 0 {
-		message("Платы", "Ни одной платы на листе: у всех 0 штук.")
+	if u.boardsLeft() == 0 {
+		message("Платы", "Ни одной платы на листе.", "В строках Платы на листе поставьте, сколько штук каждой.")
 		return nil
 	}
 	_, mapErr := os.Stat(j.mapPath())
@@ -92,7 +41,7 @@ func (u *jobUI) layout() error {
 // programs: the layout (when asked) and the programs of every stage.
 func (u *jobUI) programs(relayout bool) error {
 	j := u.j
-	p := newPage("задание / Платы", "Раскладываю и считаю программы...")
+	p := newBusyPage("задание / Платы", "Раскладываю и считаю программы...")
 	if relayout {
 		if err := j.layout(u.mirror(), u.c.MaskTest); err != nil {
 			return err
@@ -134,7 +83,9 @@ func (u *jobUI) programs(relayout bool) error {
 		}
 	}
 	info = append(info, "", "Дальше: Карта высот.")
+	sc := newSheetScene(j, u.mirror(), sheetOverlay{})
 	p.set(func() {
+		p.scene = sc
 		p.head = "Программы листа"
 		p.info = info
 		p.nolog = true
