@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"pcbscan/ui"
 )
 
 type jnode struct {
@@ -20,6 +22,9 @@ type jnode struct {
 	ov                 func() sheetOverlay // what the picture shows
 	branch             bool                // has lines inside
 	mapView            bool                // the picture is the height map
+	field              *formField          // a number edited right in the line
+	head               bool                // a heading between lines, not chosen
+	hot                bool                // an action that waits to be done
 }
 
 type jobUI struct {
@@ -39,7 +44,16 @@ type jobUI struct {
 	hmPts  []Point
 	hmErr  error
 	gen    int // changes after every action: the lists are built again
-	cache  struct {
+	// numbers edited in the lines (inline.go)
+	pendS    pending
+	relay    bool // a number of the programs moves the boards: Разложить
+	camDirty bool // the numbers of the programs changed: Пересчитать
+	edit     *ui.Field
+	editID   string
+	focused  string // the field the screen gave the keys to
+	editF    formField
+	msg      string
+	cache    struct {
 		gen, sel0 int
 		roots     []jnode
 		kids      []jnode
@@ -194,26 +208,31 @@ func (u *jobUI) kids(i int) []jnode {
 		out := []jnode{
 			{icon: "·", title: "Выбрать платы", act: u.pickBoards,
 				about: []string{"Zip или папки из KiCad, EasyEDA, Eagle рядом с pcbscan.exe, у каждой - сколько штук."}},
-			{icon: "·", title: "Лист", right: fmt.Sprintf("%sx%s, %s/%s", num(j.W), num(j.H), num(j.Margin), num(j.Gap)), act: u.sheetForm,
-				about: []string{"Размер листа, отступ от края (голая медь, в углу ноль Z) и зазор между платами."}},
-			{icon: "·", title: "Числа программ", act: u.numbers,
-				about: []string{"Фреза, глубины, подачи, обороты, сверловка, V-рез, сторона."}},
-			{icon: "·", title: "Разложить и посчитать", act: u.layout,
-				about: []string{"Платы сами встанут на лист, потом программы всех этапов."}},
 		}
-		if j.loadBoards() == nil {
-			for k, s := range j.Srcs {
-				b := j.boards[k]
-				out = append(out, jnode{icon: " ", title: b.name, right: fmt.Sprintf("x%d  %.0fx%.0f", s.N, b.box.X1-b.box.X0, b.box.Y1-b.box.Y0),
-					about: boardFiles(b)})
-			}
+		out = append(out, u.boardRows()...)
+		out = append(out, u.sheetRows()...)
+		lay := jnode{icon: "·", title: "Разложить и посчитать", act: u.layout,
+			about: []string{"Платы сами встанут на лист, потом программы всех этапов."}}
+		if u.changed() {
+			lay.hot, lay.right = true, "изменено"
+			lay.about = append([]string{"▲ Лист, платы или сторона изменены: разложите заново."}, lay.about...)
 		}
+		out = append(out, lay)
+		if u.camDirty && len(j.Places) > 0 && !u.changed() {
+			out = append(out, jnode{icon: "·", title: "Пересчитать программы", act: func() error { return u.programs(false) },
+				hot: true, right: "числа изменены", about: []string{"Программы всех этапов с новыми числами, раскладка та же."}})
+		}
+		out = append(out, jnode{title: "Числа программ", head: true})
+		out = append(out, u.camRows()...)
 		return out
 	case 1:
 		pts := u.points()
 		ov := func() sheetOverlay { return sheetOverlay{points: pts} }
 		out := []jnode{
-			{icon: "·", title: "Шаг карты", right: num(j.Step) + " мм", act: u.stepForm, ov: ov},
+			{title: "Шаг карты", field: &formField{label: "шаг карты", unit: "мм", lo: 3, hi: 50, step: 1, digits: 1,
+				get: func() float64 { return j.Step }, set: func(v float64) { j.Step = v; j.save() }}, ov: ov,
+				about: []string{fmt.Sprintf("Точек %d, ~%.0f мин.", len(pts), float64(len(pts))*secondsPerPoint/60),
+					"Расстояние между точками касания; точки на картинке пересчитываются сразу."}},
 			{icon: "·", title: "Снять карту высот", right: fmt.Sprintf("%d т.", len(pts)), act: u.scan, ov: ov,
 				about: []string{"Обход точек над платами, первая - угол листа ♦. Потом по карте выравнивается каждый файл."}},
 		}

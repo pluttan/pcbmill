@@ -142,9 +142,10 @@ func (s *sheetScene) geometry() (*image.RGBA, [][]r3.Vec) {
 		}
 	}
 	th := theme
+	// the board between its copper is near black, so the traces stand out
 	plate := th.CopperDark
-	boardC := gfx.Mix(th.CopperDark, th.Copper, 0.45)
-	trace := gfx.Mix(th.Copper, th.Rosewater, 0.18)
+	boardC := gfx.Mix(th.CopperDark, gfx.Hex("#000000"), 0.6)
+	trace := th.Copper
 	img := image.NewRGBA(image.Rect(0, 0, cu.w, cu.h))
 	for jy := 0; jy < cu.h; jy++ {
 		row := cu.h - 1 - jy // the image has its first row on top, the raster at the bottom

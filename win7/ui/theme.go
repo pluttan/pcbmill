@@ -46,7 +46,7 @@ const (
 func NewTheme() (*Theme, error) {
 	h := gfx.Hex
 	t := &Theme{scale: 1,
-		Base: h("#1e1e2e"), Mantle: h("#181825"), Crust: h("#11111b"),
+		Base: h("#000000"), Mantle: h("#0b0b10"), Crust: h("#000000"), // black backgrounds, asked for
 		Surface0: h("#313244"), Surface1: h("#45475a"), Surface2: h("#585b70"),
 		Overlay0: h("#6c7086"), Overlay1: h("#7f849c"), Overlay2: h("#9399b2"),
 		Subtext0: h("#a6adc8"), Subtext1: h("#bac2de"), Text: h("#cdd6f4"),
@@ -56,8 +56,8 @@ func NewTheme() (*Theme, error) {
 		faces: map[faceKey]*gfx.Face{},
 	}
 	t.Dim = gfx.Alpha(t.Crust, 0.55)
-	t.Copper = gfx.Mix(t.Peach, t.Maroon, 0.35)
-	t.CopperDark = gfx.Mix(t.Copper, t.Crust, 0.45)
+	t.Copper = gfx.Mix(t.Peach, t.Yellow, 0.2)
+	t.CopperDark = gfx.Mix(gfx.Mix(t.Peach, t.Maroon, 0.35), h("#000000"), 0.55)
 	load := func(names ...string) *gfx.Font {
 		p := gfx.FindFont(names...)
 		if p == "" {

@@ -183,6 +183,20 @@ func TestGUIFlow(t *testing.T) {
 	dr.wait("Карта высот", 10*time.Second)
 	dr.shot("main_after_layout")
 
+	// the sheet wider right in its line, laid out again: the map below runs on it
+	dr.stage("Платы")
+	dr.click("ширина X")
+	dr.typ("150")
+	dr.key(ui.KeyEnter)
+	dr.wait("изменено", 5*time.Second)
+	dr.shot("sheet_inline")
+	dr.click("Разложить и посчитать")
+	dr.click("Открыть")
+	dr.wait("Программы листа", 120*time.Second)
+	dr.wait("листе 150x100", 5*time.Second)
+	dr.click("Готово")
+	dr.wait("Карта высот", 10*time.Second)
+
 	// the height map
 	dr.stage("Карта высот")
 	dr.click("Снять карту высот")
@@ -235,7 +249,7 @@ func TestGUIFlow(t *testing.T) {
 	dr.click("Открыть")
 	dr.wait("Сделать файл", 10*time.Second)
 	dr.shot("redo_form")
-	dr.clickAt(w*900/1280, h*505/800) // the pads of the lower right board
+	dr.clickAt(w*700/1280, h*425/800) // the pads of the left 2032Charger on the 150 mm sheet
 	dr.shot("redo_clicked")
 	dr.click("Сделать файл")
 	dr.wait("Запустить", 10*time.Second)

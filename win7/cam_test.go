@@ -143,57 +143,61 @@ func TestIsoClearance(t *testing.T) {
 	t.Logf("ближе всего к меди %.4f мм (половина реза %.4f), медь слева %d, справа %d", worst, w/2, left, right)
 }
 
-// TestCamForm: the arrows keep values on their steps and in their limits, a
-// typed number is taken, a wrong one is refused, and the numbers come back
-// from the file next to the exe.
+// TestCamForm: the numbers of the programs right in the lines of the stage
+// Платы: the arrows keep values on their steps and in their limits, a typed
+// number is taken, a wrong one is refused, a switch steps, the numbers are in
+// the file next to the exe at once; a changed sheet asks for Разложить.
 func TestCamForm(t *testing.T) {
-	run := func(keys ...interface{}) (camCfg, bool) {
-		d := testApp(t)
-		c := defaultCam()
-		f := camNumForm(&c)
-		got := make(chan bool)
-		go func() { got <- editForm(f) }()
-		waitText(t, "Сделать программы")
-		sendKeys(d, keys...)
-		select {
-		case ok := <-got:
-			return c, ok
-		case <-time.After(5 * time.Second):
-			t.Fatal("форма не закрылась")
+	dir := t.TempDir()
+	t.Setenv("PCBSCAN_DIR", dir)
+	d := testApp(t)
+	done := make(chan bool)
+	go func() { jobMain(opts{sim: true}); close(done) }()
+	waitText(t, "Числа программ")
+	sendKeys(d, ui.KeyRight) // into Платы, on Выбрать платы
+	down := func(n int) {
+		for i := 0; i < n; i++ {
+			sendKeys(d, ui.KeyDown)
 		}
-		return c, false
 	}
-	down := []interface{}{ui.KeyDown, ui.KeyDown, ui.KeyDown} // to the depth of isolation
+	// the headings are passed by: ширина ... Разложить, кончик, угол, обороты, глубина
+	down(9)
 	var left []interface{}
 	for i := 0; i < 50; i++ {
 		left = append(left, ui.KeyLeft)
 	}
-	c, ok := run(append(append(append([]interface{}{}, down...), left...), ui.KeyEsc)...)
-	if ok || c.IsoDepth != camFields[3].lo {
-		t.Errorf("глубина %v ниже предела, ok %v", c.IsoDepth, ok)
+	// the window may lag behind the keys: wait for the file to say so
+	camIs := func(what string, ok func(c camCfg) bool) {
+		t.Helper()
+		end := time.Now().Add(5 * time.Second)
+		for !ok(loadCam(dir)) {
+			if time.Now().After(end) {
+				t.Fatalf("%s: %+v", what, loadCam(dir))
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
 	}
-	c, _ = run(append(append(append([]interface{}{}, down...), left...), ui.KeyRight, ui.KeyEsc)...)
-	if math.Abs(c.IsoDepth-0.03) > 1e-9 {
-		t.Errorf("шаг: %v", c.IsoDepth)
+	sendKeys(d, left...)
+	camIs("глубина ниже предела", func(c camCfg) bool { return c.IsoDepth == camFields[3].lo })
+	sendKeys(d, ui.KeyRight)
+	camIs("шаг", func(c camCfg) bool { return math.Abs(c.IsoDepth-0.03) < 1e-9 })
+	sendKeys(d, "0,12", ui.KeyEnter, "9", ui.KeyEnter)
+	waitText(t, "глубина: от")
+	down(8) // to Сверловка / как
+	sendKeys(d, ui.KeyRight, ui.KeyRight)
+	camIs("ввод 0,12, отказ на 9, сверловка оба", func(c camCfg) bool { return c.IsoDepth == 0.12 && c.DrillMode == drillBoth })
+	// the sheet waits for Разложить
+	sendKeys(d, ui.KeyEsc, ui.KeyRight, ui.KeyDown, ui.KeyRight) // out, in again, ширина +5
+	waitText(t, "изменено")
+	if theJob.j.W != 100 || theJob.pend().sheet[0] != 105 {
+		t.Errorf("ширина листа %v, в строке %v", theJob.j.W, theJob.pend().sheet[0])
 	}
-	keys := append([]interface{}{}, down...)
-	keys = append(keys, "0,12", ui.KeyEnter, "9", ui.KeyEnter)
-	for i := 3; i < 11; i++ {
-		keys = append(keys, ui.KeyDown)
-	}
-	keys = append(keys, ui.KeyRight, ui.KeyRight, ui.KeyEnter)
-	c, ok = run(keys...)
-	if !ok || c.IsoDepth != 0.12 {
-		t.Errorf("ввод 0,12 и отказ на 9: %v, ok %v", c.IsoDepth, ok)
-	}
-	if c.DrillMode != drillBoth {
-		t.Errorf("сверловка %d", c.DrillMode)
-	}
-	dir := t.TempDir()
-	if err := saveCam(dir, c); err != nil {
-		t.Fatal(err)
-	}
-	if got := loadCam(dir); got != c {
-		t.Errorf("из файла %+v, а было %+v", got, c)
+	sendKeys(d, ui.KeyEsc, ui.KeyEsc)
+	waitText(t, "Выйти из pcbscan?")
+	sendKeys(d, "д")
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("не вышел")
 	}
 }

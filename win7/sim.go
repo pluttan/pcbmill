@@ -67,24 +67,45 @@ func newSimMachine(surface func(x, y float64) float64) *simMachine {
 		rnd: rand.New(rand.NewSource(1))}
 }
 
-// The blank of the emulation: 100x100 mm with X0 Y0 2 mm in from its corner,
-// tilted 0.16 mm along X and 0.09 mm along Y per 100 mm, bowed and with a bump
-// of 0.05 mm. The tool starts 1.5 mm over the copper at X0 Y0, Z zeroed there.
-const (
-	blankX0, blankX1 = -2.0, 98.0
-	blankY0, blankY1 = -2.0, 98.0
-	simStart         = 1.5
-)
+// The blank of the emulation is the sheet of the job and 1 mm more round it
+// (100x100 mm until a job says), tilted 0.16 mm along X and 0.09 mm along Y
+// per 100 mm, bowed and with a bump of 0.05 mm that grow with the sheet. The
+// tool starts 1.5 mm over the copper at X0 Y0, Z zeroed there.
+const simStart = 1.5
+
+var simBlank = struct {
+	sync.Mutex
+	w, h float64
+}{w: 100, h: 100}
+
+// simFit makes the blank the size of the sheet, so a map works on any sheet.
+func simFit(w, h float64) {
+	if w <= 0 || h <= 0 {
+		return
+	}
+	simBlank.Lock()
+	simBlank.w, simBlank.h = w, h
+	simBlank.Unlock()
+}
+
+func simSize() (w, h float64) {
+	simBlank.Lock()
+	defer simBlank.Unlock()
+	return simBlank.w, simBlank.h
+}
 
 func blankRelief(x, y float64) float64 {
-	bump := 0.05 * math.Exp(-((x-55)*(x-55)+(y-40)*(y-40))/(2*18*18))
-	bow := -0.03 * ((x - 48) / 50) * ((x - 48) / 50)
+	w, h := simSize()
+	u, v := x*100/w, y*100/h // the bump and the bow sit where they did on 100x100
+	bump := 0.05 * math.Exp(-((u-55)*(u-55)+(v-40)*(v-40))/(2*18*18))
+	bow := -0.03 * ((u - 48) / 50) * ((u - 48) / 50)
 	return 0.0016*x + 0.0009*y + bump + bow
 }
 
 // simSurface: copper height under (x, y); off the blank only the table, far below.
 func simSurface(x, y float64) float64 {
-	if x < blankX0 || x > blankX1 || y < blankY0 || y > blankY1 {
+	w, h := simSize()
+	if x < -1 || x > w+1 || y < -1 || y > h+1 {
 		return -50
 	}
 	return -simStart + blankRelief(x, y) - blankRelief(0, 0)

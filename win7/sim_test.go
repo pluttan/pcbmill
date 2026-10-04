@@ -134,3 +134,22 @@ func TestSimBlankEdge(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// The blank is the sheet of the job: on a sheet wider than 100 mm the map
+// finds copper out at its far corner too.
+func TestSimBlankFollowsSheet(t *testing.T) {
+	defer simFit(100, 100)
+	simFit(160, 120)
+	_, _, s := liveSim(400)
+	rows, err := s.Grid(GridFor(140, 155, 100, 115, 15).Points(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 4 {
+		t.Fatalf("точек %d", len(rows))
+	}
+	_, err = s.Grid(GridFor(150, 170, 100, 110, 10).Points(), nil)
+	if err == nil || !strings.Contains(err.Error(), "край заготовки") {
+		t.Fatalf("за краем листа 160 мм: %v", err)
+	}
+}

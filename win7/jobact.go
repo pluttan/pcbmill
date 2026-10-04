@@ -38,6 +38,7 @@ func (u *jobUI) pickBoards() error {
 	if !ok {
 		return nil
 	}
+	u.pendS.set = false // the counts chosen here win over those in the lines
 	var chosen []jobSrc
 	for i, s := range srcs {
 		if count[i] > 0 {
@@ -64,69 +65,6 @@ func (u *jobUI) pickBoards() error {
 	return u.layout()
 }
 
-func (u *jobUI) sheetForm() error {
-	j := u.j
-	w, h, m, g := j.W, j.H, j.Margin, j.Gap
-	f := &numForm{title: "Лист", ok: "Разложить", fields: []formField{
-		{label: "ширина X", unit: "мм", lo: 20, hi: 600, step: 5, digits: 0, get: func() float64 { return w }, set: func(v float64) { w = v }},
-		{label: "высота Y", unit: "мм", lo: 20, hi: 600, step: 5, digits: 0, get: func() float64 { return h }, set: func(v float64) { h = v }},
-		{label: "отступ от края", unit: "мм", lo: 4, hi: 30, step: 1, digits: 1, get: func() float64 { return m }, set: func(v float64) { m = v }},
-		{label: "зазор плат", unit: "мм", lo: 0, hi: 20, step: 0.5, digits: 1, get: func() float64 { return g }, set: func(v float64) { g = v }},
-	}, about: func() []string {
-		return []string{fmt.Sprintf("Ноль Z касается в углу X%s Y%s.", num(m/2), num(m/2)),
-			"Зазор - между контурами плат; V-резом их потом отламывают."}
-	}}
-	if !editForm(f) {
-		return nil
-	}
-	j.W, j.H, j.Margin, j.Gap = w, h, m, g
-	return u.layout()
-}
-
-func (u *jobUI) stepForm() error {
-	s := u.j.Step
-	f := &numForm{title: "Шаг карты высот", fields: []formField{
-		{label: "шаг", unit: "мм", lo: 3, hi: 50, step: 1, digits: 1, get: func() float64 { return s }, set: func(v float64) { s = v }},
-	}, about: func() []string {
-		old := u.j.Step
-		u.j.Step = s
-		n := len(u.j.scanPoints(u.mirror()))
-		u.j.Step = old
-		return []string{fmt.Sprintf("точек %d, ~%.0f мин", n, float64(n)*secondsPerPoint/60)}
-	}}
-	var lastStep float64
-	var pts [][2]float64
-	f.scene = func() ui.Scene {
-		if s != lastStep || pts == nil {
-			old := u.j.Step
-			u.j.Step = s
-			pts = u.j.scanPoints(u.mirror())
-			u.j.Step, lastStep = old, s
-		}
-		return newSheetScene(u.j, u.mirror(), sheetOverlay{points: pts})
-	}
-	if !editForm(f) {
-		return nil
-	}
-	u.j.Step = s
-	return u.j.save()
-}
-
-func (u *jobUI) numbers() error {
-	c := u.c
-	if !editForm(camNumForm(&c)) {
-		return nil
-	}
-	u.c = c
-	if err := saveCam(exeDir(), u.c); err != nil {
-		return err
-	}
-	if len(u.j.Places) > 0 && confirm("Пересчитать программы с новыми числами?") {
-		return u.programs(false)
-	}
-	return nil
-}
-
 // layout puts the boards on the sheet again and makes the programs; a map
 // and marks of done work of the old layout go, after a question.
 func (u *jobUI) layout() error {
@@ -135,11 +73,18 @@ func (u *jobUI) layout() error {
 		message("Платы", "Сначала выберите платы.")
 		return nil
 	}
+	if u.pendS.set && u.boardsLeft() == 0 {
+		message("Платы", "Ни одной платы на листе: у всех 0 штук.")
+		return nil
+	}
 	_, mapErr := os.Stat(j.mapPath())
 	if mapErr == nil || len(j.Done) > 0 {
 		if !confirm("Разложить заново?", "Карта высот и отметки о сделанном старой раскладки не подойдут и будут сброшены.") {
 			return nil
 		}
+	}
+	if err := u.applyPend(); err != nil {
+		return err
 	}
 	return u.programs(true)
 }
@@ -161,6 +106,7 @@ func (u *jobUI) programs(relayout bool) error {
 		return err
 	}
 	t0 := time.Now()
+	u.camDirty = false
 	ops, err := j.cam(u.c, func(s string) { sayHint(s) })
 	if err != nil {
 		return err

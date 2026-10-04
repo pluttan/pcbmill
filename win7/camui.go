@@ -142,28 +142,3 @@ func (f camField) show(c *camCfg) string {
 // ==========================
 // ===  The form          ===
 // ==========================
-
-// camNumForm: the numbers of the programs as a form over c.
-func camNumForm(c *camCfg) *numForm {
-	f := &numForm{title: "Числа программ", ok: "Сделать программы", extra: "Числа по умолчанию",
-		onExtra: func() { *c = defaultCam() }}
-	for _, cf := range camFields {
-		cf := cf
-		ff := formField{label: cf.label, unit: cf.unit, group: cf.group, lo: cf.lo, hi: cf.hi, step: cf.step,
-			digits: cf.digits, choices: cf.choices,
-			get: func() float64 { return cf.get(c) }, set: func(v float64) { cf.put(c, v) }}
-		if cf.key == "maskflat" {
-			ff.show = func(v float64) string {
-				if v == 0 {
-					return "та же V"
-				}
-				return ""
-			}
-		}
-		f.fields = append(f.fields, ff)
-	}
-	f.about = func() []string {
-		return []string{fmt.Sprintf("Ширина реза V-фрезы на глубине изоляции %.3f мм.", c.cutWidth(c.IsoDepth))}
-	}
-	return f
-}

@@ -38,6 +38,7 @@ func jobMain(o opts) {
 	theJob = u
 	u.sel[0], u.sel[1] = u.next(), 0
 	for !u.quit {
+		simFit(j.W, j.H) // the virtual blank follows the sheet
 		cur, crumb = nil, "задание"
 		app.Show(u)
 		act := <-mainActs
@@ -84,8 +85,11 @@ func (u *jobUI) Draw(c *ui.Ctx) {
 	rail := ui.CutLeft(&body, railW)
 	ui.CutLeft(&body, t.Si(14))
 	midW := t.Si(340)
+	if body.Dx() > t.Si(960) {
+		midW = t.Si(390) // room for a number with its − and +
+	}
 	if body.Dx() < t.Si(700) {
-		midW = body.Dx() * 9 / 20
+		midW = body.Dx() * 3 / 5 // the numbers in the lines need the room more than the picture
 	}
 	mid := ui.CutLeft(&body, midW)
 	ui.CutLeft(&body, t.Si(14))
@@ -95,6 +99,7 @@ func (u *jobUI) Draw(c *ui.Ctx) {
 	if len(kids) > 0 {
 		cur = kids[u.sel[1]]
 	}
+	u.fieldKeys(c, kids)
 	u.drawMid(c, mid, roots[u.sel[0]], kids, cur)
 	u.drawView(c, view, roots[u.sel[0]], cur)
 	u.keys(c, roots, kids)
@@ -210,11 +215,23 @@ func (u *jobUI) drawMid(c *ui.Ctx, r image.Rectangle, root jnode, kids []jnode, 
 			if rr.Max.Y < list.Min.Y || rr.Min.Y > list.Max.Y {
 				continue
 			}
+			if k.head {
+				drawHead(c, rr, k.title)
+				continue
+			}
 			if c.Row(fmt.Sprintf("kid/%d/%s", i, k.title), rr, u.lvl == 1 && i == u.sel[1]) {
+				if i != u.sel[1] {
+					u.msg = ""
+					u.applyEdit()
+				}
 				u.sel[1], u.lvl = i, 1
 				if c.Double() && k.act != nil {
 					u.do(k.act)
 				}
+			}
+			if k.field != nil {
+				u.drawField(c, i, k, rr, i == u.sel[1])
+				continue
 			}
 			ir := image.Rect(rr.Min.X+t.Si(12), rr.Min.Y+(rr.Dy()-t.Si(18))/2, rr.Min.X+t.Si(30), rr.Min.Y+(rr.Dy()+t.Si(18))/2)
 			switch k.icon {
@@ -229,12 +246,18 @@ func (u *jobUI) drawMid(c *ui.Ctx, r image.Rectangle, root jnode, kids []jnode, 
 			rw := 0
 			if k.right != "" {
 				rs := ui.Style{Kind: ui.Regular, Size: ui.SizeSmall, Color: t.Overlay2}
+				if k.hot {
+					rs = ui.Style{Kind: ui.Bold, Size: ui.SizeSmall, Color: t.Yellow}
+				}
 				rw = imin(c.Measure(k.right, rs), rr.Dx()/2)
 				c.LabelIn(image.Rect(rr.Max.X-t.Si(10)-rw, rr.Min.Y, rr.Max.X-t.Si(10), rr.Max.Y), k.right, rs, 2)
 			}
 			st := c.Body()
 			if k.icon == " " {
 				st = c.Muted()
+			}
+			if k.hot {
+				st = ui.Style{Kind: ui.Bold, Size: ui.SizeBody, Color: t.Yellow}
 			}
 			c.LabelIn(image.Rect(tx, rr.Min.Y, rr.Max.X-t.Si(20)-rw, rr.Max.Y), k.title, st, 0)
 		}
@@ -260,8 +283,12 @@ func (u *jobUI) drawMid(c *ui.Ctx, r image.Rectangle, root jnode, kids []jnode, 
 		}
 		ui.CutBottom(&in, t.Si(10))
 	}
+	about := cur.about
+	if u.msg != "" {
+		about = append([]string{"■ " + u.msg}, about...)
+	}
 	c.WithClip(in, func() {
-		drawLines(c, in, in.Min.Y, cur.about, c.Body())
+		drawLines(c, in, in.Min.Y, about, c.Body())
 	})
 }
 
@@ -305,11 +332,19 @@ func (u *jobUI) keys(c *ui.Ctx, roots, kids []jnode) {
 		n = len(kids)
 	}
 	move := func(d int) {
-		if n > 0 {
+		if n == 0 {
+			return
+		}
+		u.msg = ""
+		u.applyEdit()
+		for k := 0; k < n; k++ { // past the headings
 			u.sel[u.lvl] = (u.sel[u.lvl] + d + n) % n
-			if u.lvl == 0 {
-				u.sel[1] = 0
+			if u.lvl == 0 || !kids[u.sel[1]].head {
+				break
 			}
+		}
+		if u.lvl == 0 {
+			u.sel[1] = 0
 		}
 	}
 	switch e.Key {
