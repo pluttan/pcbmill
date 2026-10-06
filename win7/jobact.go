@@ -43,7 +43,7 @@ func (u *jobUI) programs(relayout bool) error {
 	j := u.j
 	p := newBusyPage("задание / Платы", "Раскладываю и считаю программы...")
 	if relayout {
-		if err := j.layout(u.mirror(), u.c.MaskTest); err != nil {
+		if err := j.layout(u.mirror(), u.c.MaskTest, u.c.IsoTest); err != nil {
 			return err
 		}
 		if _, err := os.Stat(j.mapPath()); err == nil {

@@ -21,6 +21,7 @@ type camCfg struct {
 	IsoDepth        float64
 	Passes          int
 	IsoFeed, Plunge float64
+	IsoTest         bool // the probe of feeds and depths of isolation on the sheet
 	MaskDepth       float64
 	MaskFeed        float64
 	MaskFlat        float64 // a flat end mill of this diameter for the mask, 0: the V-bit
@@ -77,8 +78,23 @@ const (
 type p3 struct{ X, Y, Z float64 }
 
 type cpath struct {
-	pts  []p3
-	peck float64 // a drilled hole: down to pts[0].Z in steps of peck
+	pts          []p3
+	peck         float64 // a drilled hole: down to pts[0].Z in steps of peck
+	feed, plunge float64 // of this path only (the probes); 0: those of the file
+}
+
+func (p cpath) feedOr(f float64) float64 {
+	if p.feed > 0 {
+		return p.feed
+	}
+	return f
+}
+
+func (p cpath) plungeOr(f float64) float64 {
+	if p.plunge > 0 {
+		return p.plunge
+	}
+	return f
 }
 
 // camOp: one program file.
@@ -391,6 +407,51 @@ func maskOpen(b *board, side string, c camCfg, field []uint16) (*camOp, []uint16
 // probeW, probeH: the room of the mask probe on the sheet.
 const probeW, probeH = 25.5, 3.0
 
+// The isolation probe: grooves isoProbeLen long, a row per depth, a column
+// per feed, and over them a row of plunges, one per plunge feed.
+var (
+	isoProbeDepths  = []float64{0.04, 0.06, 0.08, 0.10, 0.12, 0.15}
+	isoProbeFeeds   = []float64{100, 200, 300, 400, 600, 800}
+	isoProbePlunges = []float64{50, 100, 150, 200, 300, 400}
+)
+
+const (
+	isoProbeLen, isoProbeDX, isoProbeDY = 5.0, 7.0, 2.0
+	isoProbeW                           = 6*isoProbeDX - (isoProbeDX - isoProbeLen)
+	isoProbeH                           = 7 * isoProbeDY
+)
+
+// isoTest: the grooves of the probe from at; the plunges go in at the depth
+// of isolation and run on 2 mm at its feed.
+func isoTest(at pt, c camCfg) *camOp {
+	op := &camOp{file: "1_iso_probe", title: "Проба подач и глубин изоляции", plunge: c.Plunge, feed: c.IsoFeed, spindle: c.Spindle}
+	for i, d := range isoProbeDepths {
+		y := at.Y + float64(i)*isoProbeDY
+		for k, f := range isoProbeFeeds {
+			x := at.X + float64(k)*isoProbeDX
+			op.paths = append(op.paths, cpath{pts: []p3{{x, y, -d}, {x + isoProbeLen, y, -d}}, feed: f})
+		}
+	}
+	y := at.Y + float64(len(isoProbeDepths))*isoProbeDY
+	for k, f := range isoProbePlunges {
+		x := at.X + float64(k)*isoProbeDX
+		op.paths = append(op.paths, cpath{pts: []p3{{x, y, -c.IsoDepth}, {x + 2, y, -c.IsoDepth}}, plunge: f})
+	}
+	op.notes = append(op.notes,
+		fmt.Sprintf("канавки %s мм от X%.1f Y%.1f: снизу вверх глубина %s, слева направо подача %s мм/мин",
+			num(isoProbeLen), at.X, at.Y, joinNums(isoProbeDepths), joinNums(isoProbeFeeds)),
+		fmt.Sprintf("верхний ряд: врезание на %s мм со скоростью %s мм/мин", num(c.IsoDepth), joinNums(isoProbePlunges)))
+	return op
+}
+
+func joinNums(v []float64) string {
+	var s []string
+	for _, x := range v {
+		s = append(s, num(x))
+	}
+	return strings.Join(s, ", ")
+}
+
 // maskTest: squares 3 x 3 mm at depths 0.01..0.06 left to right from at, to
 // find the depth that bares the copper and leaves it whole.
 func maskTest(at pt, c camCfg) *camOp {
@@ -585,7 +646,7 @@ func order(paths []cpath, start pt) []cpath {
 			}
 			pts = np
 		}
-		out = append(out, cpath{pts: pts, peck: p.peck})
+		out = append(out, cpath{pts: pts, peck: p.peck, feed: p.feed, plunge: p.plunge})
 		last := pts[len(pts)-1]
 		cur = pt{last.X, last.Y}
 	}
@@ -613,7 +674,7 @@ func (op *camOp) gcode() []string {
 			d := 0.0
 			for d < -s.Z-1e-9 {
 				d = math.Min(-s.Z, d+p.peck)
-				out = append(out, fmt.Sprintf("G1Z%sF%.1f", n3(-d), op.plunge))
+				out = append(out, fmt.Sprintf("G1Z%sF%.1f", n3(-d), p.plungeOr(op.plunge)))
 				if d < -s.Z-1e-9 {
 					out = append(out, "G0Z0.500")
 				} else {
@@ -623,7 +684,7 @@ func (op *camOp) gcode() []string {
 			at = &pt{s.X, s.Y}
 			continue
 		}
-		out = append(out, fmt.Sprintf("G1Z%sF%.1f", n3(s.Z), op.plunge))
+		out = append(out, fmt.Sprintf("G1Z%sF%.1f", n3(s.Z), p.plungeOr(op.plunge)))
 		lz := s.Z
 		for i, q := range p.pts[1:] {
 			l := "X" + n3(q.X) + "Y" + n3(q.Y)
@@ -632,7 +693,7 @@ func (op *camOp) gcode() []string {
 				lz = q.Z
 			}
 			if i == 0 {
-				l = "G1" + l + fmt.Sprintf("F%.1f", op.feed)
+				l = "G1" + l + fmt.Sprintf("F%.1f", p.feedOr(op.feed))
 			}
 			out = append(out, l)
 		}
@@ -646,18 +707,21 @@ func (op *camOp) gcode() []string {
 func (op *camOp) minutes() (float64, float64) {
 	cut, t := 0.0, 0.0
 	for _, p := range op.paths {
+		l := 0.0
 		for i := 1; i < len(p.pts); i++ {
 			a, b := p.pts[i-1], p.pts[i]
-			cut += math.Hypot(b.X-a.X, b.Y-a.Y)
+			l += math.Hypot(b.X-a.X, b.Y-a.Y)
 		}
+		cut += l
+		t += l / p.feedOr(op.feed)
 		if p.peck > 0 {
 			n := math.Ceil(-p.pts[0].Z / p.peck)
-			t += (n*(-p.pts[0].Z)/2 + travelZ) / op.plunge
+			t += (n*(-p.pts[0].Z)/2 + travelZ) / p.plungeOr(op.plunge)
 		} else {
-			t += (travelZ - p.pts[0].Z) / op.plunge
+			t += (travelZ - p.pts[0].Z) / p.plungeOr(op.plunge)
 		}
 	}
-	return cut, t + cut/op.feed + 0.1
+	return cut, t + 0.1
 }
 
 // ==========================

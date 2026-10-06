@@ -194,7 +194,7 @@ func (u *jobUI) camRows() []jnode {
 				cf.put(&u.c, v)
 				saveCam(exeDir(), u.c)
 				u.camDirty = true
-				if cf.key == "masktest" || cf.key == "side" { // the probe strip and the mirror move the boards
+				if cf.key == "masktest" || cf.key == "isotest" || cf.key == "side" { // the probe strip and the mirror move the boards
 					u.relay = true
 				}
 			}}

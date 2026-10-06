@@ -42,6 +42,8 @@ var camFields = []camField{
 		get: func(c *camCfg) float64 { return c.IsoFeed }, put: func(c *camCfg, v float64) { c.IsoFeed = v }},
 	{key: "plunge", label: "врезание", unit: "мм/мин", lo: 10, hi: 1000, step: 10,
 		get: func(c *camCfg) float64 { return c.Plunge }, put: func(c *camCfg, v float64) { c.Plunge = v }},
+	{key: "isotest", label: "проба подач", choices: []string{"нет", "да"},
+		get: func(c *camCfg) float64 { return b2f(c.IsoTest) }, put: func(c *camCfg, v float64) { c.IsoTest = v != 0 }},
 	{key: "maskdepth", group: "Вскрытие маски", label: "глубина", unit: "мм", lo: 0.005, hi: 0.3, step: 0.005, digits: 3,
 		get: func(c *camCfg) float64 { return c.MaskDepth }, put: func(c *camCfg, v float64) { c.MaskDepth = v }},
 	{key: "maskflat", label: "фреза", unit: "мм", lo: 0, hi: 3, step: 0.1, digits: 1,

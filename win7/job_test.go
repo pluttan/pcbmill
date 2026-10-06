@@ -19,7 +19,7 @@ func testJob(t *testing.T) *Job {
 	j := newJob(filepath.Join(t.TempDir(), "job"))
 	j.W, j.H = 140, 90
 	j.Srcs = []jobSrc{{abs(all["2032Charger"]), 2}, {abs(all["ex-eagle"]), 1}}
-	if err := j.layout(false, true); err != nil {
+	if err := j.layout(false, true, false); err != nil {
 		t.Fatal(err)
 	}
 	return j
@@ -94,7 +94,7 @@ func TestLayout(t *testing.T) {
 func TestLayoutFull(t *testing.T) {
 	j := testJob(t)
 	j.W, j.H = 60, 60
-	if err := j.layout(false, false); err == nil || !strings.Contains(err.Error(), "помещается") {
+	if err := j.layout(false, false, false); err == nil || !strings.Contains(err.Error(), "помещается") {
 		t.Fatalf("на маленький лист: %v", err)
 	}
 }

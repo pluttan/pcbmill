@@ -36,6 +36,7 @@ type Job struct {
 	Srcs              []jobSrc
 	Places            []jobPlace
 	Probe             *pt               // the mask probe on the sheet
+	IsoProbe          *pt               // the probe of isolation feeds and depths
 	Done              map[string]string // stage or file -> when it was done
 	boards            []*board
 }
@@ -86,6 +87,9 @@ func (j *Job) save() error {
 	}
 	if j.Probe != nil {
 		fmt.Fprintf(&b, "probe %s %s\r\n", num(j.Probe.X), num(j.Probe.Y))
+	}
+	if j.IsoProbe != nil {
+		fmt.Fprintf(&b, "isoprobe %s %s\r\n", num(j.IsoProbe.X), num(j.IsoProbe.Y))
 	}
 	var keys []string
 	for k := range j.Done {
@@ -167,6 +171,12 @@ func loadJob(dir string) (*Job, error) {
 				return nil, err
 			}
 			j.Probe = &pt{v[0], v[1]}
+		case "isoprobe":
+			v, err := nums(2)
+			if err != nil {
+				return nil, err
+			}
+			j.IsoProbe = &pt{v[0], v[1]}
 		case "done":
 			if len(f) >= 2 {
 				j.Done[f[1]] = strings.Join(f[2:], " ")
@@ -332,8 +342,9 @@ func (g *occGrid) fits(rows [][][2]int, x, y int) bool {
 
 // layout puts every board on the sheet bottom left first, the biggest first,
 // trying the four quarter turns; the boards keep Gap between their outlines
-// and Margin from the edges. The mask probe goes in last when it is wanted.
-func (j *Job) layout(mirror, probe bool) error {
+// and Margin from the edges. The probes go in last when they are wanted:
+// the isolation probe first, it is the bigger.
+func (j *Job) layout(mirror, probe, isoProbe bool) error {
 	if err := j.loadBoards(); err != nil {
 		return err
 	}
@@ -378,7 +389,7 @@ func (j *Job) layout(mirror, probe bool) error {
 		}
 	}
 	shapes := map[int][][][][2]int{}
-	j.Places, j.Probe = nil, nil
+	j.Places, j.Probe, j.IsoProbe = nil, nil, nil
 	for n, it := range items {
 		sh, ok := shapes[it.src]
 		if !ok {
@@ -396,15 +407,28 @@ func (j *Job) layout(mirror, probe bool) error {
 		takeShape(sh[r], x, y)
 		j.Places = append(j.Places, jobPlace{it.src, r, j.Margin + float64(x)*nestCell, j.Margin + float64(y)*nestCell})
 	}
-	if probe {
-		pw, ph := int(math.Ceil(probeW/nestCell)), int(math.Ceil(probeH/nestCell))
+	// a probe is a box; it keeps the gap to the boards and to the other probe
+	box := func(w, h float64) *pt {
+		pw, ph := int(math.Ceil(w/nestCell)), int(math.Ceil(h/nestCell))
 		rows := make([][][2]int, ph)
 		for k := range rows {
 			rows[k] = [][2]int{{0, pw - 1}}
 		}
-		if _, x, y, ok := put([][][][2]int{rows}); ok {
-			j.Probe = &pt{j.Margin + float64(x)*nestCell, j.Margin + float64(y)*nestCell}
+		_, x, y, ok := put([][][][2]int{rows})
+		if !ok {
+			return nil
 		}
+		takeShape(rows, x, y)
+		return &pt{j.Margin + float64(x)*nestCell, j.Margin + float64(y)*nestCell}
+	}
+	if isoProbe {
+		if j.IsoProbe = box(isoProbeW, isoProbeH); j.IsoProbe == nil {
+			return fmt.Errorf("на листе %sx%s мм нет места %sx%s мм под пробу подач: увеличьте лист или выключите пробу",
+				num(j.W), num(j.H), num(isoProbeW), num(isoProbeH))
+		}
+	}
+	if probe {
+		j.Probe = box(probeW, probeH)
 	}
 	return nil
 }
@@ -521,6 +545,12 @@ func (j *Job) cam(c camCfg, say func(string)) ([]*camOp, error) {
 		m.paths = append(m.paths, zeroSpot(z, c)...)
 		m.notes = append(m.notes, fmt.Sprintf("круг %s мм без маски в ноле X%s Y%s: касание Z0 после маски",
 			num(2*zeroSpotR), num(z.X), num(z.Y)))
+	}
+	if j.IsoProbe != nil && merged["1_iso"] != nil {
+		op := isoTest(*j.IsoProbe, c)
+		op.tool = merged["1_iso"].tool
+		merged[op.file] = op
+		keys = append(keys, op.file)
 	}
 	if j.Probe != nil && merged["2_mask"] != nil {
 		op := maskTest(*j.Probe, c)

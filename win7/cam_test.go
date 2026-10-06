@@ -183,7 +183,7 @@ func TestCamForm(t *testing.T) {
 	camIs("шаг", func(c camCfg) bool { return math.Abs(c.IsoDepth-0.03) < 1e-9 })
 	sendKeys(d, "0,12", ui.KeyEnter, "9", ui.KeyEnter)
 	waitText(t, "глубина: от")
-	down(8) // to Сверловка / как
+	down(9) // to Сверловка / как, past проба подач
 	sendKeys(d, ui.KeyRight, ui.KeyRight)
 	camIs("ввод 0,12, отказ на 9, сверловка оба", func(c camCfg) bool { return c.IsoDepth == 0.12 && c.DrillMode == drillBoth })
 	// the sheet waits for Разложить
