@@ -424,7 +424,7 @@ var (
 const (
 	isoProbeLen, isoProbeDX, isoProbeDY = 5.0, 7.0, 2.0
 	isoProbeW                           = 6*isoProbeDX - (isoProbeDX - isoProbeLen)
-	isoProbeH                           = 3 * isoProbeDY
+	isoProbeH                           = 4 * isoProbeDY
 	isoLineW, isoLineLen                = 0.3, 30.0 // the tracks of the depth probe and their gap
 	isoLinePad                          = 0.9       // the square pads at the ends, for a multimeter
 	isoLineSetW                         = 2*isoLinePad + isoLineLen + isoLineW
@@ -479,7 +479,8 @@ func depthTest(at pt, c camCfg) *camOp {
 }
 
 // isoTest: the feed probe from at at the depth of isolation: grooves at each
-// feed, plunges that run on 2 mm, grooves at each spindle speed.
+// feed, plunges that run on 2 mm, grooves at each spindle speed; on top one
+// pass at each probe depth, whose width tells the real tip of the V-bit.
 func isoTest(at pt, c camCfg) *camOp {
 	op := &camOp{file: "1_iso_probe_feed", title: "Проба подач, врезания и оборотов", plunge: c.Plunge, feed: c.IsoFeed, spindle: c.Spindle}
 	d := c.IsoDepth
@@ -497,6 +498,13 @@ func isoTest(at pt, c camCfg) *camOp {
 		x := at.X + float64(k)*isoProbeDX
 		op.paths = append(op.paths, cpath{pts: []p3{{x, y, -d}, {x + isoProbeLen, y, -d}}, spindle: s})
 	}
+	y += isoProbeDY
+	var widths []string
+	for k, dd := range isoProbeDepths {
+		x := at.X + float64(k)*isoProbeDX
+		op.paths = append(op.paths, cpath{pts: []p3{{x, y, -dd}, {x + isoProbeLen, y, -dd}}})
+		widths = append(widths, fmt.Sprintf("%s: %.2f", num(dd), c.cutWidth(dd)))
+	}
 	for i := range op.paths { // the order of paths changes: each says its speed
 		if op.paths[i].spindle == 0 {
 			op.paths[i].spindle = c.Spindle
@@ -504,8 +512,10 @@ func isoTest(at pt, c camCfg) *camOp {
 	}
 	op.notes = append(op.notes,
 		fmt.Sprintf("на глубине %s мм от X%.1f Y%.1f: нижний ряд подача %s мм/мин", num(d), at.X, at.Y, joinNums(isoProbeFeeds)),
-		fmt.Sprintf("средний ряд: врезание %s мм/мин", joinNums(isoProbePlunges)),
-		fmt.Sprintf("верхний ряд: обороты %s при подаче %s", joinNums(isoProbeSpeeds), num(c.IsoFeed)))
+		fmt.Sprintf("второй ряд: врезание %s мм/мин", joinNums(isoProbePlunges)),
+		fmt.Sprintf("третий ряд: обороты %s при подаче %s", joinNums(isoProbeSpeeds), num(c.IsoFeed)),
+		fmt.Sprintf("верхний ряд: один проход на глубине %s мм; ширина по расчёту, мм: %s", joinNums(isoProbeDepths), strings.Join(widths, ", ")),
+		fmt.Sprintf("кончик фрезы по замеру = ширина канавки - %.3f x глубина", 2*math.Tan(c.Angle/2*math.Pi/180)))
 	return op
 }
 

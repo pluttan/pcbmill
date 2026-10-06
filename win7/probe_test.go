@@ -97,6 +97,11 @@ func TestMachineProbes(t *testing.T) {
 		iso = append(iso, fmt.Sprintf("S%.0fM3", s))
 	}
 	want("1_", 1, iso, true)
+	var wd []string
+	for _, d := range isoProbeDepths {
+		wd = append(wd, "Z"+n3(-d))
+	}
+	want("1_", 1, wd, false) // the row of widths
 	var dr []string
 	for _, f := range drillProbeFeeds {
 		dr = append(dr, feed(f))
