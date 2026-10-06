@@ -141,13 +141,21 @@ func (c *Canvas) DrawImage(at image.Point, src *image.RGBA) {
 		do := c.Img.PixOffset(r.Min.X, y)
 		sp := src.Pix[so : so+r.Dx()*4]
 		dp := c.Img.Pix[do : do+r.Dx()*4]
-		for i := 0; i < len(sp); i += 4 {
+		for i := 0; i < len(sp); {
 			sa := sp[i+3]
-			if sa == 255 {
-				copy(dp[i:i+4], sp[i:i+4])
-			} else if sa != 0 {
+			if sa == 255 { // a run of opaque pixels goes in one copy
+				j := i + 4
+				for j < len(sp) && sp[j+3] == 255 {
+					j += 4
+				}
+				copy(dp[i:j], sp[i:j])
+				i = j
+				continue
+			}
+			if sa != 0 {
 				blendPremul(dp[i:i+4], uint32(sp[i]), uint32(sp[i+1]), uint32(sp[i+2]), uint32(sa), 255)
 			}
+			i += 4
 		}
 	}
 }

@@ -54,6 +54,7 @@ type Ctx struct {
 	texts    []TextAt
 	cursor   Cursor
 	animate  bool
+	wakeAt   time.Time // one more frame then, without a frame in between
 	tooltips []string
 }
 
@@ -102,6 +103,14 @@ func (c *Ctx) Wheel(r image.Rectangle) float64 {
 
 // Animate asks for frames by themselves for a while (blinking, progress).
 func (c *Ctx) Animate() { c.animate = true }
+
+// WakeAt asks for one frame at t: a change that comes at a known time
+// (a caret blinking) costs one frame, not twenty a second.
+func (c *Ctx) WakeAt(t time.Time) {
+	if c.wakeAt.IsZero() || t.Before(c.wakeAt) {
+		c.wakeAt = t
+	}
+}
 
 // SetCursor: the pointer for this frame.
 func (c *Ctx) SetCursor(k Cursor) { c.cursor = k }

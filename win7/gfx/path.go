@@ -342,6 +342,9 @@ func join(out []Pt, v, n0, n1 Pt, hw float64) []Pt {
 func arcPts(out []Pt, c Pt, r, a0, a1 float64) []Pt {
 	span := a1 - a0
 	n := arcSteps(r, math.Abs(span))
+	if cap(out)-len(out) < n+1 {
+		out = append(make([]Pt, 0, 2*len(out)+4*(n+1)), out...) // room for the other corners too
+	}
 	for i := 0; i <= n; i++ {
 		a := a0 + span*float64(i)/float64(n)
 		out = append(out, Pt{c.X + r*math.Cos(a), c.Y + r*math.Sin(a)})

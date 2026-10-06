@@ -4,7 +4,8 @@ package ui
 // button, moved with the right one, zoomed with the wheel. The picture is
 // cached and drawn again only when the scene or the camera changed; while the
 // mouse drags it is drawn plainly, after that once more smoothed (twice the
-// pixels, averaged).
+// pixels, averaged). The pixels of a frame have a budget: a big view (a
+// Retina screen) is drawn at half size while it moves and not smoothed at rest.
 
 import (
 	"image"
@@ -45,13 +46,20 @@ type viewState struct {
 	ver      int
 	lastCam  r3.Camera
 	w, h, ss int
-	drag     int // 0 none, 1 orbit, 2 pan
+	div      int         // a moving frame is drawn this many times smaller
+	up       *image.RGBA // the small frame blown back up
+	drag     int         // 0 none, 1 orbit, 2 pan
 	last     image.Point
 	moved    float64
 	busyAt   time.Time
-	slow     bool // 1x frames take too long here: never smooth
 	home     func(*r3.Camera, r3.Vec, r3.Vec, int, int)
 }
+
+// The pixel budgets of a frame: a moving one, a smoothed one at rest.
+const (
+	movePixels   = 1200000
+	smoothPixels = 6000000
+)
 
 // Camera presets.
 func homeCam(cam *r3.Camera, min, max r3.Vec, w, h int) {
@@ -126,32 +134,37 @@ func (c *Ctx) View3D(id string, r image.Rectangle, sc Scene) ViewHit {
 	} else if e.Kind == EvMouseUp {
 		vs.drag = 0
 	}
-	// draw: smoothed when nothing moves, plain while it does
-	ss := 2
-	if vs.slow || time.Since(vs.busyAt) < 250*time.Millisecond {
+	// draw: smoothed when nothing moves, plain while it does; a big view
+	// moves at half size
+	ss, div := 2, 1
+	if 4*w*h > smoothPixels {
 		ss = 1
+	}
+	if time.Since(vs.busyAt) < 250*time.Millisecond {
+		ss, div = 1, moveDiv(w, h)
 		c.animate = true
 	}
 	ver := sc.Version()
-	if vs.img == nil || ver != vs.ver || vs.cam != vs.lastCam || w != vs.w || h != vs.h || ss != vs.ss {
-		if ver != vs.ver && ss == 2 && vs.img != nil && !vs.slow {
-			ss = 1 // live content (a scan) changes often: keep it quick, smooth when it rests
+	if vs.img == nil || ver != vs.ver || vs.cam != vs.lastCam || w != vs.w || h != vs.h || ss != vs.ss || div != vs.div {
+		if ver != vs.ver && ss == 2 && vs.img != nil {
+			ss, div = 1, moveDiv(w, h) // live content (a scan) changes often: keep it quick, smooth when it rests
 			vs.busyAt = time.Now()
 			c.animate = true
 		}
-		start := time.Now()
-		vs.frame.Resize(w*ss, h*ss)
+		fw, fh := (w*ss+div-1)/div, (h*ss+div-1)/div
+		vs.frame.Resize(fw, fh)
 		vs.frame.Clear(t.Base, t.Crust)
-		sc.Render(vs.frame, &vs.cam, t.S(1)*float64(ss))
-		if ss == 2 {
+		sc.Render(vs.frame, &vs.cam, t.S(1)*float64(ss)/float64(div))
+		switch {
+		case ss == 2:
 			vs.img = vs.frame.Downsample2()
-		} else {
+		case div > 1:
+			vs.up = upscale(vs.up, vs.frame.Img, w, h, div)
+			vs.img = vs.up
+		default:
 			vs.img = vs.frame.Img
-			if time.Since(start) > 90*time.Millisecond {
-				vs.slow = true
-			}
 		}
-		vs.ver, vs.lastCam, vs.w, vs.h, vs.ss = ver, vs.cam, w, h, ss
+		vs.ver, vs.lastCam, vs.w, vs.h, vs.ss, vs.div = ver, vs.cam, w, h, ss, div
 	}
 	c.WithClip(r, func() {
 		c.C.DrawImage(r.Min, vs.img)
@@ -184,4 +197,43 @@ func (c *Ctx) RefitView(id string) {
 	if vs := c.st.views[id]; vs != nil {
 		vs.fitted = false
 	}
+}
+
+// moveDiv: how many times smaller a moving frame of w x h is drawn to keep
+// within movePixels.
+func moveDiv(w, h int) int {
+	d := 1
+	for w*h/(d*d) > movePixels {
+		d++
+	}
+	return d
+}
+
+// upscale blows src up div times into a w x h image (reused when it fits):
+// each pixel becomes a div x div square.
+func upscale(dst, src *image.RGBA, w, h, div int) *image.RGBA {
+	if dst == nil || dst.Rect.Dx() != w || dst.Rect.Dy() != h {
+		dst = image.NewRGBA(image.Rect(0, 0, w, h))
+	}
+	sw, sh := src.Rect.Dx(), src.Rect.Dy()
+	for y := 0; y < h; y++ {
+		sy := y / div
+		if sy >= sh {
+			sy = sh - 1
+		}
+		d := dst.Pix[y*dst.Stride : y*dst.Stride+4*w]
+		if y%div != 0 {
+			copy(d, dst.Pix[(y-1)*dst.Stride:(y-1)*dst.Stride+4*w])
+			continue
+		}
+		s := src.Pix[sy*src.Stride:]
+		for x := 0; x < w; x++ {
+			sx := x / div
+			if sx >= sw {
+				sx = sw - 1
+			}
+			copy(d[4*x:4*x+4], s[4*sx:4*sx+4])
+		}
+	}
+	return dst
 }

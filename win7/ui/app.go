@@ -36,7 +36,8 @@ type App struct {
 	frame  *gfx.Canvas
 	in     input
 	st     state
-	anim   time.Time // redraw by itself until then (blinking, progress)
+	anim   time.Time // redraw by itself until then (progress, a moving view)
+	wakeAt time.Time // one redraw then (a blinking caret); zero: none
 	closed bool
 	// OnClose is called on the window goroutine when the operator closes
 	// the window; nil closes at once.
@@ -137,7 +138,8 @@ func (a *App) loop() {
 		case <-a.wake:
 		case <-tick.C:
 			a.mu.Lock()
-			live := time.Now().Before(a.anim)
+			now := time.Now()
+			live := now.Before(a.anim) || !a.wakeAt.IsZero() && !now.Before(a.wakeAt)
 			a.mu.Unlock()
 			if !live {
 				continue
@@ -238,6 +240,7 @@ func (a *App) pass(show bool) {
 	if c.animate {
 		a.anim = time.Now().Add(200 * time.Millisecond)
 	}
+	a.wakeAt = c.wakeAt
 	if show {
 		a.Disp.SetCursor(c.cursor)
 		a.Disp.Present(a.frame.Img)

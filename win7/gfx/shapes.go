@@ -165,6 +165,13 @@ var (
 // spread are applied by the caller through x, y, w, h. Masks are cached
 // because the same cards are redrawn every frame.
 func (c *Canvas) Shadow(x, y, w, h, radius, blur float64, col color.NRGBA) {
+	c.ShadowUnder(x, y, w, h, radius, blur, col, image.Rectangle{})
+}
+
+// ShadowUnder is Shadow under something opaque that will cover the
+// rectangle cover: the shadow is blended only around it (a big card would
+// otherwise blend its whole area for nothing).
+func (c *Canvas) ShadowUnder(x, y, w, h, radius, blur float64, col color.NRGBA, cover image.Rectangle) {
 	if w <= 0 || h <= 0 || col.A == 0 {
 		return
 	}
@@ -191,9 +198,15 @@ func (c *Canvas) Shadow(x, y, w, h, radius, blur float64, col color.NRGBA) {
 	at := image.Pt(int(math.Floor(x))+m.ox, int(math.Floor(y))+m.oy)
 	dst := image.Rect(at.X, at.Y, at.X+m.w, at.Y+m.h).Intersect(c.clip())
 	ca := uint32(col.A)
+	hole := cover.Intersect(dst)
 	for yy := dst.Min.Y; yy < dst.Max.Y; yy++ {
 		src := m.a[(yy-at.Y)*m.w+dst.Min.X-at.X:]
-		blendMask(c.Img.Pix[c.Img.PixOffset(dst.Min.X, yy):], src[:dst.Dx()], col, ca)
+		if yy < hole.Min.Y || yy >= hole.Max.Y {
+			blendMask(c.Img.Pix[c.Img.PixOffset(dst.Min.X, yy):], src[:dst.Dx()], col, ca)
+			continue
+		}
+		blendMask(c.Img.Pix[c.Img.PixOffset(dst.Min.X, yy):], src[:hole.Min.X-dst.Min.X], col, ca)
+		blendMask(c.Img.Pix[c.Img.PixOffset(hole.Max.X, yy):], src[hole.Max.X-dst.Min.X:dst.Dx()], col, ca)
 	}
 }
 

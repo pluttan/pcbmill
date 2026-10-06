@@ -21,7 +21,7 @@ import (
 func (c *Ctx) Card(r image.Rectangle) {
 	t := c.T
 	x, y, w, h := float64(r.Min.X), float64(r.Min.Y), float64(r.Dx()), float64(r.Dy())
-	c.C.Shadow(x, y+t.S(2), w, h, t.S(10), t.S(14), gfx.Alpha(t.Crust, 0.55))
+	c.C.ShadowUnder(x, y+t.S(2), w, h, t.S(10), t.S(14), gfx.Alpha(t.Crust, 0.55), r.Inset(t.Si(10)))
 	c.C.FillRoundRect(x, y, w, h, t.S(10), t.Base)
 	c.C.StrokeRoundRect(x+0.5, y+0.5, w-1, h-1, t.S(10), 1, gfx.Alpha(t.Surface1, 0.6))
 }
@@ -303,7 +303,7 @@ func (c *Ctx) TextField(id string, r image.Rectangle, f *Field, st Style, align 
 		}
 	})
 	if focused {
-		c.animate = true
+		c.WakeAt(time.Unix(0, (time.Now().UnixNano()/5e8+1)*5e8)) // the next blink
 	}
 	return enter, cancel
 }
