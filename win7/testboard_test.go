@@ -32,7 +32,7 @@ func TestTestBoard(t *testing.T) {
 	if err := j.layout(false, true, true); err != nil {
 		t.Fatal(err)
 	}
-	if j.IsoProbe == nil || j.DrillProbe == nil || j.VProbe == nil || j.Probe == nil {
+	if j.DepthProbe == nil || j.IsoProbe == nil || j.DrillProbe == nil || j.VProbe == nil || j.Probe == nil {
 		t.Fatalf("не все пробы на листе 100x100: %v %v %v %v", j.IsoProbe, j.DrillProbe, j.VProbe, j.Probe)
 	}
 	c := defaultCam()
@@ -66,6 +66,6 @@ func TestTestBoard(t *testing.T) {
 		_, min := op.minutes()
 		t.Logf("%-18s ~%4.0f мин  %s", op.file, min, strings.Join(op.notes, "; "))
 	}
-	t.Logf("отверстий %d, пробы: изоляция X%.0f Y%.0f, сверло X%.0f Y%.0f, V-рез X%.0f Y%.0f, маска X%.0f Y%.0f",
-		holes, j.IsoProbe.X, j.IsoProbe.Y, j.DrillProbe.X, j.DrillProbe.Y, j.VProbe.X, j.VProbe.Y, j.Probe.X, j.Probe.Y)
+	t.Logf("отверстий %d, пробы: глубина X%.0f Y%.0f, изоляция X%.0f Y%.0f, сверло X%.0f Y%.0f, V-рез X%.0f Y%.0f, маска X%.0f Y%.0f",
+		holes, j.DepthProbe.X, j.DepthProbe.Y, j.IsoProbe.X, j.IsoProbe.Y, j.DrillProbe.X, j.DrillProbe.Y, j.VProbe.X, j.VProbe.Y, j.Probe.X, j.Probe.Y)
 }

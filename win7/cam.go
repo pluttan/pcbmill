@@ -408,8 +408,10 @@ func maskOpen(b *board, side string, c camCfg, field []uint16) (*camOp, []uint16
 // probeW, probeH: the room of the mask probe on the sheet.
 const probeW, probeH = 25.5, 3.0
 
-// The isolation probe: grooves isoProbeLen long, a row per depth, a column
-// per feed, and over them a row of plunges, one per plunge feed.
+// The isolation probes. The depth probe: for each depth three tracks of the
+// rule (0.3 wide, 0.3 apart) isoLineLen long, cut round as a board is. The
+// feed probe at the depth of isolation: a row of feeds, a row of plunges, a
+// row of spindle speeds.
 var (
 	isoProbeDepths  = []float64{0.04, 0.06, 0.08, 0.10, 0.12, 0.15}
 	isoProbeFeeds   = []float64{100, 200, 300, 400, 600, 800}
@@ -422,33 +424,78 @@ var (
 const (
 	isoProbeLen, isoProbeDX, isoProbeDY = 5.0, 7.0, 2.0
 	isoProbeW                           = 6*isoProbeDX - (isoProbeDX - isoProbeLen)
-	isoProbeH                           = 8 * isoProbeDY
+	isoProbeH                           = 3 * isoProbeDY
+	isoLineW, isoLineLen                = 0.3, 30.0 // the tracks of the depth probe and their gap
+	isoLinePad                          = 0.9       // the square pads at the ends, for a multimeter
+	isoLineSetW                         = 2*isoLinePad + isoLineLen + isoLineW
+	isoLineSetH                         = 2*isoLinePad + 3*isoLineW
+	isoLineDY                           = isoLineSetH + 0.8 // a set and the cut round it
+	isoLineM                            = 0.5               // the cut round the outer sets
+	depthProbeW                         = isoLineSetW + 2*isoLineM
+	depthProbeH                         = 5*isoLineDY + isoLineSetH + 2*isoLineM
 	drillProbeDX                        = 4.0
 	drillProbeW, drillProbeH            = 5*drillProbeDX + 1, 1.0
 	vProbeLen, vProbeDY                 = 8.0, 2.5
 	vProbeW, vProbeH                    = vProbeLen, 4*vProbeDY + 1
 )
 
-// isoTest: the grooves of the probe from at; the plunges go in at the depth
-// of isolation and run on 2 mm at its feed.
-func isoTest(at pt, c camCfg) *camOp {
-	op := &camOp{file: "1_iso_probe", title: "Проба подач и глубин изоляции", plunge: c.Plunge, feed: c.IsoFeed, spindle: c.Spindle}
-	for i, d := range isoProbeDepths {
-		y := at.Y + float64(i)*isoProbeDY
-		for k, f := range isoProbeFeeds {
-			x := at.X + float64(k)*isoProbeDX
-			op.paths = append(op.paths, cpath{pts: []p3{{x, y, -d}, {x + isoProbeLen, y, -d}}, feed: f})
-		}
+// isoLineSet: the copper of one set of the depth probe from its lower left
+// corner. Track 1 has its pad on the left below, track 3 on the left above;
+// track 2 runs between the pads and past the ends of 1 and 3 to its pad on
+// the right. Every gap is isoLineW, as between the tracks.
+func isoLineSet(x, y float64) []shape {
+	w, l, p := isoLineW, isoLineLen, isoLinePad
+	box := func(x0, y0, x1, y1 float64) shape {
+		return shape{dark: true, polys: [][]pt{{{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}}}}
 	}
-	y := at.Y + float64(len(isoProbeDepths))*isoProbeDY
+	y1, y2, y3 := y+p-w, y+p+w, y+p+3*w // the bottoms of the tracks
+	yc := y2 + w/2
+	return []shape{
+		box(x, y, x+p, y+p), box(x+p, y1, x+p+l, y1+w), // track 1
+		box(x, y3, x+p, y3+p), box(x+p, y3, x+p+l, y3+w), // track 3
+		box(x+p+w, y2, x+p+l+w, y2+w), box(x+p+l+w, yc-p/2, x+2*p+l+w, yc+p/2), // track 2
+	}
+}
+
+// depthTest: the depth probe from at, bottom up deeper, each set cut by the
+// isolation of a board at its depth.
+func depthTest(at pt, c camCfg) *camOp {
+	op := &camOp{file: "1_iso_probe_depth", title: "Проба глубины изоляции", plunge: c.Plunge, feed: c.IsoFeed, spindle: c.Spindle}
+	for i, d := range isoProbeDepths {
+		x, y := at.X+isoLineM, at.Y+isoLineM+float64(i)*isoLineDY
+		g := &gerber{shapes: isoLineSet(x, y)}
+		box, _ := g.bounds()
+		b := &board{copper: map[string]*gerber{lyTop: g}, box: box}
+		cd := c
+		cd.IsoDepth = d
+		iso, _ := isolation(b, lyTop, cd, nil)
+		op.paths = append(op.paths, iso.paths...)
+	}
+	op.notes = append(op.notes,
+		fmt.Sprintf("от X%.1f Y%.1f снизу вверх глубина %s мм: в каждом наборе три дорожки %s мм с зазором %s мм длиной %s мм",
+			at.X, at.Y, joinNums(isoProbeDepths), num(isoLineW), num(isoLineW), num(isoLineLen)),
+		"нужная глубина: самый нижний набор, где соседние дорожки не звонят между собой и с медью вокруг")
+	return op
+}
+
+// isoTest: the feed probe from at at the depth of isolation: grooves at each
+// feed, plunges that run on 2 mm, grooves at each spindle speed.
+func isoTest(at pt, c camCfg) *camOp {
+	op := &camOp{file: "1_iso_probe_feed", title: "Проба подач, врезания и оборотов", plunge: c.Plunge, feed: c.IsoFeed, spindle: c.Spindle}
+	d := c.IsoDepth
+	for k, f := range isoProbeFeeds {
+		x := at.X + float64(k)*isoProbeDX
+		op.paths = append(op.paths, cpath{pts: []p3{{x, at.Y, -d}, {x + isoProbeLen, at.Y, -d}}, feed: f})
+	}
+	y := at.Y + isoProbeDY
 	for k, f := range isoProbePlunges {
 		x := at.X + float64(k)*isoProbeDX
-		op.paths = append(op.paths, cpath{pts: []p3{{x, y, -c.IsoDepth}, {x + 2, y, -c.IsoDepth}}, plunge: f})
+		op.paths = append(op.paths, cpath{pts: []p3{{x, y, -d}, {x + 2, y, -d}}, plunge: f})
 	}
 	y += isoProbeDY
 	for k, s := range isoProbeSpeeds {
 		x := at.X + float64(k)*isoProbeDX
-		op.paths = append(op.paths, cpath{pts: []p3{{x, y, -c.IsoDepth}, {x + isoProbeLen, y, -c.IsoDepth}}, spindle: s})
+		op.paths = append(op.paths, cpath{pts: []p3{{x, y, -d}, {x + isoProbeLen, y, -d}}, spindle: s})
 	}
 	for i := range op.paths { // the order of paths changes: each says its speed
 		if op.paths[i].spindle == 0 {
@@ -456,9 +503,8 @@ func isoTest(at pt, c camCfg) *camOp {
 		}
 	}
 	op.notes = append(op.notes,
-		fmt.Sprintf("канавки %s мм от X%.1f Y%.1f: снизу вверх глубина %s, слева направо подача %s мм/мин",
-			num(isoProbeLen), at.X, at.Y, joinNums(isoProbeDepths), joinNums(isoProbeFeeds)),
-		fmt.Sprintf("ряд над ними: врезание на %s мм со скоростью %s мм/мин", num(c.IsoDepth), joinNums(isoProbePlunges)),
+		fmt.Sprintf("на глубине %s мм от X%.1f Y%.1f: нижний ряд подача %s мм/мин", num(d), at.X, at.Y, joinNums(isoProbeFeeds)),
+		fmt.Sprintf("средний ряд: врезание %s мм/мин", joinNums(isoProbePlunges)),
 		fmt.Sprintf("верхний ряд: обороты %s при подаче %s", joinNums(isoProbeSpeeds), num(c.IsoFeed)))
 	return op
 }

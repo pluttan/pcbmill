@@ -1,6 +1,7 @@
 package main
 
 import (
+	"image/png"
 	"math"
 	"os"
 	"path/filepath"
@@ -79,7 +80,7 @@ func TestRenderTime(t *testing.T) {
 		defer func() { theme = nil }()
 	}
 	j, hm := renderJob(t)
-	for _, file := range []string{"1_iso", "1_iso_probe", "3_drill_1.0", "4_vcut"} {
+	for _, file := range []string{"1_iso", "1_iso_probe_depth", "3_drill_1.0", "4_vcut"} {
 		for _, ss := range []int{1, 2} {
 			s, f, cam := sheetFrame(t, j, hm, file, 1200*ss, 800*ss)
 			s.Render(f, cam, float64(ss)) // the copper texture is cached after this
@@ -91,5 +92,36 @@ func TestRenderTime(t *testing.T) {
 			}
 			t.Logf("%-12s x%d  путей %5d  кадр %v", file, ss, len(s.ov.paths), time.Since(t0)/n)
 		}
+	}
+}
+
+// TestShotProbe: PCBSCAN_SHOT=dir writes the depth probe seen from above,
+// as the screen shows it, to dir/depth_probe.png.
+func TestShotProbe(t *testing.T) {
+	dir := os.Getenv("PCBSCAN_SHOT")
+	if dir == "" {
+		t.Skip("PCBSCAN_SHOT не задан")
+	}
+	th, err := ui.NewTheme()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := theme
+	theme = th
+	defer func() { theme = old }()
+	j, _ := renderJob(t)
+	s, f, cam := sheetFrame(t, j, nil, "1_iso_probe_depth", 2400, 1600)
+	cam.Yaw, cam.Pitch = -math.Pi/2, math.Pi/2-0.02
+	a := *j.DepthProbe
+	cam.Fit(r3.Vec{X: a.X, Y: a.Y}, r3.Vec{X: a.X + depthProbeW, Y: a.Y + depthProbeH}, f.W, f.H)
+	f.Clear(theme.Base, theme.Crust)
+	s.Render(f, cam, 2)
+	out, err := os.Create(filepath.Join(dir, "depth_probe.png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer out.Close()
+	if err := png.Encode(out, f.Img); err != nil {
+		t.Fatal(err)
 	}
 }

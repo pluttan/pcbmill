@@ -24,7 +24,7 @@ func TestMachineProbes(t *testing.T) {
 		at   *pt
 		w, h float64
 	}
-	boxes := []box{{"изоляция", j.IsoProbe, isoProbeW, isoProbeH}, {"сверловка", j.DrillProbe, drillProbeW, drillProbeH},
+	boxes := []box{{"глубина", j.DepthProbe, depthProbeW, depthProbeH}, {"изоляция", j.IsoProbe, isoProbeW, isoProbeH}, {"сверловка", j.DrillProbe, drillProbeW, drillProbeH},
 		{"V-рез", j.VProbe, vProbeW, vProbeH}, {"маска", j.Probe, probeW, probeH}}
 	r := j.boardsRaster(false, 0.25)
 	for i, a := range boxes {
@@ -60,12 +60,12 @@ func TestMachineProbes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := func(prefix string, words []string, mapped bool) {
+	want := func(prefix string, k int, words []string, mapped bool) {
 		m := j.stageFiles(prefix)
-		if len(m) < 2 || !strings.Contains(m[0], "_probe") {
+		if len(m) < k+2 || !strings.Contains(m[k], "_probe") {
 			t.Fatalf("%s: проба не первая: %v", prefix, m)
 		}
-		lines, err := readLines(m[0])
+		lines, err := readLines(m[k])
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -83,7 +83,7 @@ func TestMachineProbes(t *testing.T) {
 				// the map writes F100 where the program had F100.0
 				re := regexp.MustCompile(regexp.QuoteMeta(strings.TrimSuffix(w, ".0")) + `(\.0+)?[^0-9.]`)
 				if !re.MatchString(all) {
-					t.Errorf("%s %s: нет %s", m[0][strings.LastIndex(m[0], "sheet_"):], name, w)
+					t.Errorf("%s %s: нет %s", m[k][strings.LastIndex(m[k], "sheet_"):], name, w)
 				}
 			}
 		}
@@ -96,17 +96,17 @@ func TestMachineProbes(t *testing.T) {
 	for _, s := range isoProbeSpeeds {
 		iso = append(iso, fmt.Sprintf("S%.0fM3", s))
 	}
-	want("1_", iso, true)
+	want("1_", 1, iso, true)
 	var dr []string
 	for _, f := range drillProbeFeeds {
 		dr = append(dr, feed(f))
 	}
-	want("3_", dr, true)
+	want("3_", 0, dr, true)
 	var vc []string
 	for _, d := range vProbeDepths {
 		vc = append(vc, "Z"+n3(-d))
 	}
-	want("4_", vc, false)
+	want("4_", 0, vc, false)
 	lines, _ := readLines(j.stageFiles("1_")[0])
 	depth, _, min, err := progInfo(lines)
 	if err != nil {
@@ -117,4 +117,53 @@ func TestMachineProbes(t *testing.T) {
 	}
 	t.Logf("изоляция X%.1f Y%.1f ~%.1f мин, сверловка X%.1f Y%.1f, V-рез X%.1f Y%.1f, маска X%.1f Y%.1f",
 		j.IsoProbe.X, j.IsoProbe.Y, min, j.DrillProbe.X, j.DrillProbe.Y, j.VProbe.X, j.VProbe.Y, j.Probe.X, j.Probe.Y)
+}
+
+// TestDepthProbe: a set of the depth probe is three tracks apart from each
+// other; each depth cuts round them as a board is cut, without a short.
+func TestDepthProbe(t *testing.T) {
+	g := &gerber{shapes: isoLineSet(0, 0)}
+	box, _ := g.bounds()
+	if math.Abs(box.X1-box.X0-isoLineSetW) > 1e-9 || math.Abs(box.Y1-box.Y0-isoLineSetH) > 1e-9 {
+		t.Errorf("набор %.2f x %.2f, ждали %.2f x %.2f", box.X1-box.X0, box.Y1-box.Y0, isoLineSetW, isoLineSetH)
+	}
+	r := newRaster(rect{box.X0 - 1, box.X1 + 1, box.Y0 - 1, box.Y1 + 1}, 0.01)
+	for _, s := range g.shapes {
+		r.draw(s)
+	}
+	p := r.pieces()
+	ids := map[int]bool{}
+	for j := 0; j < r.h; j++ {
+		for i := 0; i < r.w; i++ {
+			if r.at(i, j) {
+				ids[p.label(i, j)] = true
+			}
+		}
+	}
+	if len(ids) != 3 {
+		t.Errorf("в наборе %d кусков меди, ждали 3 дорожки", len(ids))
+	}
+	c := defaultCam()
+	op := depthTest(pt{10, 10}, c)
+	got := map[string]bool{}
+	for _, q := range op.paths {
+		got[n3(q.pts[0].Z)] = true
+		for _, v := range q.pts {
+			if v.X < 10 || v.Y < 10 || v.X > 10+depthProbeW || v.Y > 10+depthProbeH {
+				t.Fatalf("путь пробы глубины вне её места: %v", v)
+			}
+		}
+	}
+	for _, d := range isoProbeDepths {
+		if !got[n3(-d)] {
+			t.Errorf("нет глубины %.2f", d)
+		}
+		cd := c
+		cd.IsoDepth = d
+		b := &board{copper: map[string]*gerber{lyTop: g}, box: box}
+		if iso, _ := isolation(b, lyTop, cd, nil); len(iso.marks) > 0 {
+			t.Errorf("глубина %.2f: перемычки %v", d, iso.marks)
+		}
+	}
+	t.Logf("проба глубины %.1f x %.1f мм, путей %d", depthProbeW, depthProbeH, len(op.paths))
 }
