@@ -514,26 +514,42 @@ func (j *Job) boardsRaster(mirror bool, px float64) *raster {
 	return r
 }
 
-// scanPoints: the height map only where the boards are: a grid of Step over
-// them, a point kept when a board is within its reach; Z0 first, in the
-// corner, so the map and every later Z0 have the same zero.
+// scanPoints: the height map only where the boards and the machine probes
+// are: a grid of Step over them, a point kept when a board or a probe is
+// within its reach; Z0 first, in the corner, so the map and every later Z0
+// have the same zero.
 func (j *Job) scanPoints(mirror bool) [][2]float64 {
 	if len(j.Places) == 0 {
 		return nil
 	}
 	u := j.used(mirror)
+	probes := j.probeBoxes()
+	for _, p := range probes {
+		u.X0, u.X1 = math.Min(u.X0, p.at.X), math.Max(u.X1, p.at.X+p.w)
+		u.Y0, u.Y1 = math.Min(u.Y0, p.at.Y), math.Max(u.Y1, p.at.Y+p.h)
+	}
 	g := GridFor(u.X0, u.X1, u.Y0, u.Y1, j.Step)
 	r := j.boardsRaster(mirror, 0.5)
 	d := r.distTo(1, nil)
 	reach := math.Max(g.StepX(), g.StepY())*0.75 + 0.5
 	z := j.zero()
 	out := [][2]float64{{z.X, z.Y}}
-	for _, q := range g.Points() {
+	near := func(q [2]float64) bool {
+		for _, p := range probes { // the distance to the box of a probe
+			dx := math.Max(0, math.Max(p.at.X-q[0], q[0]-p.at.X-p.w))
+			dy := math.Max(0, math.Max(p.at.Y-q[1], q[1]-p.at.Y-p.h))
+			if math.Hypot(dx, dy) <= reach {
+				return true
+			}
+		}
 		i, k := int(r.col(q[0])+0.5), int(r.row(q[1])+0.5)
 		if i < 0 || k < 0 || i >= r.w || k >= r.h {
-			continue
+			return false
 		}
-		if float64(d[k*r.w+i])/distScale*r.px <= reach {
+		return float64(d[k*r.w+i])/distScale*r.px <= reach
+	}
+	for _, q := range g.Points() {
+		if near(q) {
 			out = append(out, q)
 		}
 	}

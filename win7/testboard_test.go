@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,6 +36,20 @@ func TestTestBoard(t *testing.T) {
 	if j.DepthProbe == nil || j.IsoProbe == nil || j.DrillProbe == nil || j.VProbe == nil || j.Probe == nil {
 		t.Fatalf("не все пробы на листе 100x100: %v %v %v %v", j.IsoProbe, j.DrillProbe, j.VProbe, j.Probe)
 	}
+	// the probes are cut by the map too: a point near every corner of each
+	pts := j.scanPoints(false)
+	for _, p := range j.probeBoxes() {
+		for _, q := range [][2]float64{{p.at.X, p.at.Y}, {p.at.X + p.w, p.at.Y}, {p.at.X, p.at.Y + p.h}, {p.at.X + p.w, p.at.Y + p.h}} {
+			best := math.Inf(1)
+			for _, s := range pts {
+				best = math.Min(best, math.Hypot(s[0]-q[0], s[1]-q[1]))
+			}
+			if best > j.Step {
+				t.Errorf("проба %s: точка карты в %.1f мм от угла X%.1f Y%.1f", p.name, best, q[0], q[1])
+			}
+		}
+	}
+	t.Logf("точек карты %d", len(pts))
 	c := defaultCam()
 	c.IsoTest = true
 	ops, err := j.cam(c, func(string) {})

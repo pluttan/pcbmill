@@ -173,7 +173,7 @@ func (u *jobUI) roots() []jnode {
 		}
 	}
 	pts := u.points()
-	m.about = []string{fmt.Sprintf("Точки только над платами: %d, шаг %s мм, ~%.0f мин.", len(pts), num(j.Step),
+	m.about = []string{fmt.Sprintf("Точки только над платами и пробами: %d, шаг %s мм, ~%.0f мин.", len(pts), num(j.Step),
 		float64(len(pts))*secondsPerPoint/60), "♦ угол листа: ноль Z карты и всех смен фрезы."}
 	m.ov = func() sheetOverlay { return sheetOverlay{points: pts} }
 	out = append(out, m)
