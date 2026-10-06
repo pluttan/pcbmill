@@ -81,6 +81,7 @@ type cpath struct {
 	pts          []p3
 	peck         float64 // a drilled hole: down to pts[0].Z in steps of peck
 	feed, plunge float64 // of this path only (the probes); 0: those of the file
+	spindle      float64 // the probes: the speed for this path, 0: as it is
 }
 
 func (p cpath) feedOr(f float64) float64 {
@@ -413,12 +414,19 @@ var (
 	isoProbeDepths  = []float64{0.04, 0.06, 0.08, 0.10, 0.12, 0.15}
 	isoProbeFeeds   = []float64{100, 200, 300, 400, 600, 800}
 	isoProbePlunges = []float64{50, 100, 150, 200, 300, 400}
+	isoProbeSpeeds  = []float64{6000, 8000, 10000, 12000, 15000, 18000}
+	drillProbeFeeds = []float64{20, 30, 45, 60, 90, 120}
+	vProbeDepths    = []float64{0.4, 0.6, 0.8, 1.0, 1.2}
 )
 
 const (
 	isoProbeLen, isoProbeDX, isoProbeDY = 5.0, 7.0, 2.0
 	isoProbeW                           = 6*isoProbeDX - (isoProbeDX - isoProbeLen)
-	isoProbeH                           = 7 * isoProbeDY
+	isoProbeH                           = 8 * isoProbeDY
+	drillProbeDX                        = 4.0
+	drillProbeW, drillProbeH            = 5*drillProbeDX + 1, 1.0
+	vProbeLen, vProbeDY                 = 8.0, 2.5
+	vProbeW, vProbeH                    = vProbeLen, 4*vProbeDY + 1
 )
 
 // isoTest: the grooves of the probe from at; the plunges go in at the depth
@@ -437,10 +445,49 @@ func isoTest(at pt, c camCfg) *camOp {
 		x := at.X + float64(k)*isoProbeDX
 		op.paths = append(op.paths, cpath{pts: []p3{{x, y, -c.IsoDepth}, {x + 2, y, -c.IsoDepth}}, plunge: f})
 	}
+	y += isoProbeDY
+	for k, s := range isoProbeSpeeds {
+		x := at.X + float64(k)*isoProbeDX
+		op.paths = append(op.paths, cpath{pts: []p3{{x, y, -c.IsoDepth}, {x + isoProbeLen, y, -c.IsoDepth}}, spindle: s})
+	}
+	for i := range op.paths { // the order of paths changes: each says its speed
+		if op.paths[i].spindle == 0 {
+			op.paths[i].spindle = c.Spindle
+		}
+	}
 	op.notes = append(op.notes,
 		fmt.Sprintf("канавки %s мм от X%.1f Y%.1f: снизу вверх глубина %s, слева направо подача %s мм/мин",
 			num(isoProbeLen), at.X, at.Y, joinNums(isoProbeDepths), joinNums(isoProbeFeeds)),
-		fmt.Sprintf("верхний ряд: врезание на %s мм со скоростью %s мм/мин", num(c.IsoDepth), joinNums(isoProbePlunges)))
+		fmt.Sprintf("ряд над ними: врезание на %s мм со скоростью %s мм/мин", num(c.IsoDepth), joinNums(isoProbePlunges)),
+		fmt.Sprintf("верхний ряд: обороты %s при подаче %s", joinNums(isoProbeSpeeds), num(c.IsoFeed)))
+	return op
+}
+
+// drillTest: through holes of the 1.0 drill from at, left to right a faster
+// feed of the drill each.
+func drillTest(at pt, c camCfg) *camOp {
+	op := &camOp{file: "3_drill_probe", title: "Проба подач сверла", plunge: c.DrillFeed, feed: c.DrillFeed, spindle: c.Spindle}
+	for k, f := range drillProbeFeeds {
+		x := at.X + 0.5 + float64(k)*drillProbeDX
+		op.paths = append(op.paths, cpath{pts: []p3{{x, at.Y + 0.5, -(c.Thickness + 0.3)}}, peck: pecks, plunge: f})
+	}
+	op.notes = append(op.notes, fmt.Sprintf("отверстия от X%.1f Y%.1f, слева направо подача сверла %s мм/мин",
+		at.X, at.Y, joinNums(drillProbeFeeds)))
+	return op
+}
+
+// vcutTest: grooves of the V-cutter from at, bottom up deeper each, in steps
+// of the V-cut.
+func vcutTest(at pt, c camCfg) *camOp {
+	op := &camOp{file: "4_vcut_probe", title: "Проба глубины V-реза", plunge: c.Plunge / 2, feed: c.VFeed, spindle: c.Spindle}
+	for i, d := range vProbeDepths {
+		y := at.Y + 0.5 + float64(i)*vProbeDY
+		for _, z := range levels(d, c.VStep) {
+			op.paths = append(op.paths, cpath{pts: []p3{{at.X, y, -z}, {at.X + vProbeLen, y, -z}}})
+		}
+	}
+	op.notes = append(op.notes, fmt.Sprintf("канавки %s мм от X%.1f Y%.1f, снизу вверх глубина %s мм",
+		num(vProbeLen), at.X, at.Y, joinNums(vProbeDepths)))
 	return op
 }
 
@@ -646,7 +693,7 @@ func order(paths []cpath, start pt) []cpath {
 			}
 			pts = np
 		}
-		out = append(out, cpath{pts: pts, peck: p.peck, feed: p.feed, plunge: p.plunge})
+		out = append(out, cpath{pts: pts, peck: p.peck, feed: p.feed, plunge: p.plunge, spindle: p.spindle})
 		last := pts[len(pts)-1]
 		cur = pt{last.X, last.Y}
 	}
@@ -665,10 +712,15 @@ func n3(v float64) string {
 func (op *camOp) gcode() []string {
 	out := []string{"T1M6", "G0Z" + n3(safeZ), fmt.Sprintf("G0X0.000Y0.000S%.0fM3", op.spindle), "G1Z2.000F30.0"}
 	var at *pt
+	speed := op.spindle
 	for _, p := range op.paths {
 		s := p.pts[0]
 		if at == nil || at.X != s.X || at.Y != s.Y {
 			out = append(out, "G0Z"+n3(travelZ), "G0X"+n3(s.X)+"Y"+n3(s.Y))
+		}
+		if p.spindle > 0 && p.spindle != speed { // a new speed: its time on a slow move in the air
+			speed = p.spindle
+			out = append(out, fmt.Sprintf("S%.0fM3", speed), "G1Z2.000F30.0", "G0Z"+n3(travelZ))
 		}
 		if p.peck > 0 {
 			d := 0.0

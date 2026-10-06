@@ -36,7 +36,9 @@ type Job struct {
 	Srcs              []jobSrc
 	Places            []jobPlace
 	Probe             *pt               // the mask probe on the sheet
-	IsoProbe          *pt               // the probe of isolation feeds and depths
+	IsoProbe          *pt               // the probe of isolation feeds, depths and speeds
+	DrillProbe        *pt               // the probe of drill feeds
+	VProbe            *pt               // the probe of V-cut depths
 	Done              map[string]string // stage or file -> when it was done
 	boards            []*board
 }
@@ -88,8 +90,13 @@ func (j *Job) save() error {
 	if j.Probe != nil {
 		fmt.Fprintf(&b, "probe %s %s\r\n", num(j.Probe.X), num(j.Probe.Y))
 	}
-	if j.IsoProbe != nil {
-		fmt.Fprintf(&b, "isoprobe %s %s\r\n", num(j.IsoProbe.X), num(j.IsoProbe.Y))
+	for _, p := range []struct {
+		key string
+		at  *pt
+	}{{"isoprobe", j.IsoProbe}, {"drillprobe", j.DrillProbe}, {"vprobe", j.VProbe}} {
+		if p.at != nil {
+			fmt.Fprintf(&b, "%s %s %s\r\n", p.key, num(p.at.X), num(p.at.Y))
+		}
 	}
 	var keys []string
 	for k := range j.Done {
@@ -171,12 +178,20 @@ func loadJob(dir string) (*Job, error) {
 				return nil, err
 			}
 			j.Probe = &pt{v[0], v[1]}
-		case "isoprobe":
+		case "isoprobe", "drillprobe", "vprobe":
 			v, err := nums(2)
 			if err != nil {
 				return nil, err
 			}
-			j.IsoProbe = &pt{v[0], v[1]}
+			at := &pt{v[0], v[1]}
+			switch f[0] {
+			case "isoprobe":
+				j.IsoProbe = at
+			case "drillprobe":
+				j.DrillProbe = at
+			default:
+				j.VProbe = at
+			}
 		case "done":
 			if len(f) >= 2 {
 				j.Done[f[1]] = strings.Join(f[2:], " ")
@@ -389,7 +404,7 @@ func (j *Job) layout(mirror, probe, isoProbe bool) error {
 		}
 	}
 	shapes := map[int][][][][2]int{}
-	j.Places, j.Probe, j.IsoProbe = nil, nil, nil
+	j.Places, j.Probe, j.IsoProbe, j.DrillProbe, j.VProbe = nil, nil, nil, nil, nil
 	for n, it := range items {
 		sh, ok := shapes[it.src]
 		if !ok {
@@ -422,9 +437,14 @@ func (j *Job) layout(mirror, probe, isoProbe bool) error {
 		return &pt{j.Margin + float64(x)*nestCell, j.Margin + float64(y)*nestCell}
 	}
 	if isoProbe {
-		if j.IsoProbe = box(isoProbeW, isoProbeH); j.IsoProbe == nil {
-			return fmt.Errorf("на листе %sx%s мм нет места %sx%s мм под пробу подач: увеличьте лист или выключите пробу",
-				num(j.W), num(j.H), num(isoProbeW), num(isoProbeH))
+		for _, p := range []struct {
+			at   **pt
+			w, h float64
+		}{{&j.IsoProbe, isoProbeW, isoProbeH}, {&j.VProbe, vProbeW, vProbeH}, {&j.DrillProbe, drillProbeW, drillProbeH}} {
+			if *p.at = box(p.w, p.h); *p.at == nil {
+				return fmt.Errorf("на листе %sx%s мм нет места под пробы станка: увеличьте лист или выключите пробы",
+					num(j.W), num(j.H))
+			}
 		}
 	}
 	if probe {
@@ -549,6 +569,18 @@ func (j *Job) cam(c camCfg, say func(string)) ([]*camOp, error) {
 	if j.IsoProbe != nil && merged["1_iso"] != nil {
 		op := isoTest(*j.IsoProbe, c)
 		op.tool = merged["1_iso"].tool
+		merged[op.file] = op
+		keys = append(keys, op.file)
+	}
+	if j.DrillProbe != nil && c.DrillMode != drillSpot {
+		op := drillTest(*j.DrillProbe, c)
+		op.tool = "сверло 1.0"
+		merged[op.file] = op
+		keys = append(keys, op.file)
+	}
+	if j.VProbe != nil && merged["4_vcut"] != nil {
+		op := vcutTest(*j.VProbe, c)
+		op.tool = merged["4_vcut"].tool
 		merged[op.file] = op
 		keys = append(keys, op.file)
 	}
