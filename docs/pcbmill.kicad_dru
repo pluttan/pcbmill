@@ -1,0 +1,36 @@
+(version 1)
+# Rules of a board milled by pcbscan (docs/pcb-rules.md).
+# Copy next to the .kicad_pcb as <board name>.kicad_dru; KiCad DRC reads it.
+
+# a V-bit 0.1 mm / 45 deg at 0.1 mm cuts 0.18 mm; 0.3 leaves room for the
+# height map being off by 0.05 mm
+(rule "pcbmill clearance"
+	(constraint clearance (min 0.3mm)))
+
+# thinner copper lifts off the board when soldered
+(rule "pcbmill track"
+	(constraint track_width (min 0.3mm)))
+
+# the holes are not plated: a via joins nothing
+(rule "pcbmill no vias"
+	(constraint disallow via))
+
+# the hole goes off by up to 0.2 mm; the ring holds the part
+(rule "pcbmill ring"
+	(condition "A.Type == 'Pad' && A.Pad_Type == 'Through-hole' && A.Pad_Shape == 'Circle'")
+	(constraint annular_width (min 0.5mm)))
+
+# an oval between two tracks: thin across, the long side holds it
+(rule "pcbmill ring oval"
+	(condition "A.Type == 'Pad' && A.Pad_Type == 'Through-hole' && A.Pad_Shape != 'Circle'")
+	(constraint annular_width (min 0.25mm)))
+
+(rule "pcbmill hole"
+	(constraint hole_size (min 0.8mm)))
+
+(rule "pcbmill hole to hole"
+	(constraint hole_to_hole (min 0.8mm)))
+
+# the V-groove is 0.6 mm wide and the edge chips when the board is broken off
+(rule "pcbmill edge"
+	(constraint edge_clearance (min 1mm)))

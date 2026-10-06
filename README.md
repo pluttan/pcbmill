@@ -38,6 +38,8 @@ make selftest
 
 ## Плата → программы
 
+Как рисовать плату, чтобы станок её сделал: [docs/pcb-rules.md](docs/pcb-rules.md), правила DRC для KiCad в `docs/pcbmill.kicad_dru`.
+
 ```
 make cam GERBERS=путь/к/герберам            # односторонняя: берётся единственный слой меди
 make cam GERBERS=путь SIDE=bottom          # медь снизу: зеркально, как будет лежать на столе
