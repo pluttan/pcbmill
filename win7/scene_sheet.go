@@ -89,6 +89,9 @@ func sheetKey(j *Job, mirror bool, _, _ int) string {
 	for _, p := range j.Places {
 		k += fmt.Sprintf("|%d,%d,%s,%s", p.Src, p.Rot, num(p.X), num(p.Y))
 	}
+	for _, p := range j.probeBoxes() {
+		k += fmt.Sprintf("|%s,%s,%s", p.name, num(p.at.X), num(p.at.Y))
+	}
 	return k
 }
 
@@ -245,6 +248,15 @@ func (s *sheetScene) Render(f *r3.Frame, cam *r3.Camera, px float64) {
 		}
 		f.Lines(cam, pts, true, r3.LineStyle{Width: 1.2 * px, Color: gfx.Alpha(t.Lavender, 0.9), Hidden: 0.15, Bias: 0.05})
 	}
+	// the places of the machine probes: a frame round each
+	for _, p := range j.probeBoxes() {
+		x0, y0, x1, y1 := p.at.X, p.at.Y, p.at.X+p.w, p.at.Y+p.h
+		var ring []r3.Vec
+		for _, q := range [][2]float64{{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}, {x0, y0}} {
+			ring = append(ring, r3.Vec{X: q[0], Y: q[1], Z: lift(q[0], q[1])})
+		}
+		f.Lines(cam, ring, true, r3.LineStyle{Width: 1.2 * px, Color: gfx.Alpha(t.Peach, 0.9), Hidden: 0.3, Bias: 0.05})
+	}
 	// the paths of a program on the copper; under it they show through
 	if len(s.ov.paths) > 0 {
 		col := stageColor(s.ov.stage)
@@ -322,6 +334,11 @@ func (s *sheetScene) Overlay(c *ui.Ctx, r image.Rectangle, cam *r3.Camera) {
 	z := s.j.zero()
 	if sx, sy, _, ok := cam.Project(r3.Vec{X: z.X, Y: z.Y, Z: 0.1}, r.Dx(), r.Dy()); ok {
 		c.Label(r.Min.X+int(sx)+t.Si(9), r.Min.Y+int(sy)-t.Si(8), "Z0", ui.Style{Kind: ui.Bold, Size: ui.SizeSmall, Color: t.Mauve})
+	}
+	for _, p := range s.j.probeBoxes() {
+		if sx, sy, _, ok := cam.Project(r3.Vec{X: p.at.X, Y: p.at.Y + p.h, Z: 0.1}, r.Dx(), r.Dy()); ok {
+			c.Label(r.Min.X+int(sx)+t.Si(4), r.Min.Y+int(sy)-t.Si(18), p.name, ui.Style{Kind: ui.Bold, Size: ui.SizeSmall, Color: t.Peach})
+		}
 	}
 	axisTriad(c, r, cam)
 	if s.tool {

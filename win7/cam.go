@@ -416,7 +416,7 @@ var (
 	isoProbeDepths  = []float64{0.04, 0.06, 0.08, 0.10, 0.12, 0.15}
 	isoProbeFeeds   = []float64{100, 200, 300, 400, 600, 800}
 	isoProbePlunges = []float64{50, 100, 150, 200, 300, 400}
-	isoProbeSpeeds  = []float64{6000, 8000, 10000, 12000, 15000, 18000}
+	isoProbeSpeeds  = []float64{9000, 12000, 15000, 18000, 21000, 24000}
 	drillProbeFeeds = []float64{20, 30, 45, 60, 90, 120}
 	vProbeDepths    = []float64{0.4, 0.6, 0.8, 1.0, 1.2}
 )

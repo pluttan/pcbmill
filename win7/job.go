@@ -54,6 +54,29 @@ const jobFile = "job.txt"
 // the corner of the sheet, outside every board: the mask never covers it.
 func (j *Job) zero() pt { return pt{j.Margin / 2, j.Margin / 2} }
 
+// probeBox: the place of a machine probe on the sheet.
+type probeBox struct {
+	name string
+	at   pt
+	w, h float64
+}
+
+// probeBoxes: the probes laid on the sheet, for the picture.
+func (j *Job) probeBoxes() []probeBox {
+	var out []probeBox
+	for _, p := range []struct {
+		name string
+		at   *pt
+		w, h float64
+	}{{"глубина", j.DepthProbe, depthProbeW, depthProbeH}, {"подачи", j.IsoProbe, isoProbeW, isoProbeH},
+		{"сверло", j.DrillProbe, drillProbeW, drillProbeH}, {"V-рез", j.VProbe, vProbeW, vProbeH}, {"маска", j.Probe, probeW, probeH}} {
+		if p.at != nil {
+			out = append(out, probeBox{p.name, *p.at, p.w, p.h})
+		}
+	}
+	return out
+}
+
 // zeroSpotR: the radius of the circle the mask program bares at the zero.
 const zeroSpotR = 1.0
 
