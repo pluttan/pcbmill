@@ -8,12 +8,21 @@ LOG     ?=
 DIALECT ?= grbl
 SIDE    ?= auto
 
-.PHONY: all rules install cam probe level show check selftest calib scan-demo win7 mac test clean
+.PHONY: all rules rules-publish install cam probe level show check selftest calib scan-demo win7 mac test clean
 
 all: install
 
-rules:            ## правила проектирования плат → docs/pcb-rules.pdf
+RULES_HOST ?= root@157.22.189.111
+RULES_DIR  ?= /var/www/pcb
+
+rules:            ## правила проектирования плат → docs/pcb-rules.pdf и build/pcb-rules/
 	typst compile docs/pcb-rules.typ docs/pcb-rules.pdf
+	mkdir -p build/pcb-rules
+	python3 tools/pcb_rules_html.py docs/pcb-rules.json build/pcb-rules
+	cp docs/pcb-rules.pdf docs/pcbmill.kicad_dru build/pcb-rules/
+
+rules-publish: rules  ## страница правил на https://157.22.189.111:8445/
+	tar -C build/pcb-rules -cf - . | ssh $(RULES_HOST) 'mkdir -p $(RULES_DIR) && tar -C $(RULES_DIR) --no-same-owner -xf - && chmod -R a+rX $(RULES_DIR)'
 
 install:
 	python3.12 -m venv $(VENV) && $(PIP) install -U pip && $(PIP) install -r requirements.txt

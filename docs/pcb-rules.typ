@@ -1,11 +1,13 @@
-// Правила проектирования плат под наш станок: одна таблица, мм и милы.
-// Сборка: make rules (typst compile docs/pcb-rules.typ docs/pcb-rules.pdf).
-// Почему такие числа: docs/pcb-rules.md.
+// Правила проектирования плат под станок: одна таблица, мм и милы.
+// Числа в pcb-rules.json (из него же страница на сервере, tools/pcb_rules_html.py).
+// Сборка: make rules. Почему такие числа: docs/pcb-rules.md.
 
-#set document(title: "Правила проектирования плат")
+#set document(title: "Правила проектирования плат под станок")
 #set page(paper: "a4", margin: (x: 14mm, y: 12mm))
-#set text(font: "PT Sans", lang: "ru", size: 10pt)
-#set table(stroke: 0.4pt + luma(170), inset: (x: 6pt, y: 4.5pt))
+#set text(font: "PT Sans", lang: "ru", size: 9.5pt)
+#set table(stroke: 0.4pt + luma(170), inset: (x: 5pt, y: 4pt))
+
+#let data = json("pcb-rules.json")
 
 // 1 mil = 0.0254 mm: one decimal, whole mils from 100 up
 #let mil(x) = {
@@ -18,60 +20,24 @@
 #let cells(x) = if x == none { ([], []) } else if type(x) == str { (table.cell(colspan: 2, align: center, x),) } else if type(x) == array {
   ([#x.map(mm).join("×")], [#x.map(mil).join("×")])
 } else { ([#mm(x)], [#mil(x)]) }
-#let row(name, lo, rec) = (name, ..cells(lo), ..cells(rec))
-#let group(name) = (table.cell(colspan: 5, fill: luma(232), text(weight: "bold", name)),)
 
-#align(center, text(size: 15pt, weight: "bold")[Правила проектирования плат под наш станок])
-#align(center, text(fill: luma(90))[один слой меди · отверстия без металлизации · 1 mil = 0.0254 мм])
+#align(center, text(size: 15pt, weight: "bold")[Правила проектирования плат под станок])
 #v(4pt)
 
 #table(
-  columns: (1fr, 48pt, 50pt, 62pt, 84pt),
-  align: (left, right, right, right, right),
+  columns: (1fr, 104pt, 34pt, 36pt, 54pt, 72pt),
+  align: (left + horizon, left + horizon, right + horizon, right + horizon, right + horizon, right + horizon),
   table.header(
     table.cell(rowspan: 2, align: horizon, text(weight: "bold")[Параметр]),
+    table.cell(rowspan: 2, align: horizon, text(weight: "bold")[В KiCad]),
     table.cell(colspan: 2, align: center, text(weight: "bold")[Минимум]),
     table.cell(colspan: 2, align: center, text(weight: "bold")[Рекомендуется]),
     [мм], [mil], [мм], [mil],
   ),
-  ..group("Медь"),
-  ..row([Зазор медь – медь], 0.3, 0.4),
-  ..row([Зазор заливки до чужой меди], 0.4, 0.5),
-  ..row([Ширина сигнальной дорожки], 0.3, 0.4),
-  ..row([Ширина дорожки питания], 0.8, 1.0),
-  ..row([Перемычка тепловой разгрузки], 0.4, 0.5),
-  ..row([Медь до края платы], 1.0, 1.5),
-  ..row([Медь до края головки винта M3], 1.0, none),
-  ..group("Отверстия"),
-  ..row([Диаметр отверстия], 0.8, none),
-  ..row([Резисторы, диоды, светодиоды, DIP], none, 0.8),
-  ..row([Штыревые разъёмы], none, 1.0),
-  ..row([Клеммники, мощные выводы], none, 1.2),
-  ..row([Крепёж M3], none, 3.2),
-  ..row([Между краями отверстий], 0.8, 1.0),
-  ..row([Шаг диаметров (округление)], 0.1, none),
-  ..group("Площадки"),
-  ..row([Поясок круглой площадки], 0.5, 0.6),
-  ..row([Поясок овала по узкой стороне], 0.25, none),
-  ..row([Овал под отверстие 1.0], none, (1.5, 2.2)),
-  ..row([Окно маски шире площадки, на сторону], 0.05, 0.1),
-  ..group("SMD"),
-  ..row([Шаг выводов], 0.65, 1.27),
-  ..row([Ширина площадки при шаге 0.65], none, 0.35),
-  ..row([Пассивные корпуса], none, "0805, 1206"),
-  ..row([QFN, BGA, шаг 0.5], none, "нельзя"),
-  ..group("Надписи медью"),
-  ..row([Высота букв], 2.0, 2.5),
-  ..row([Толщина линии], 0.3, 0.4),
-  ..group("Плата"),
-  ..row([Слоёв меди], none, "1"),
-  ..row([Переходные отверстия], none, "нет"),
-  ..row([Проволочные перемычки на плату], none, "до 5"),
-  ..row([Форма контура], none, "прямоугольник"),
-  ..row([Плата на заготовке 100×100 мм], none, (84, 84)),
-  ..row([Отступ от края заготовки], none, 8),
-  ..row([Между платами на заготовке], 3, none),
-  ..row([Наибольшая заготовка], none, (600, 600)),
+  ..data.map(g => (
+    (table.cell(colspan: 6, fill: luma(232), text(weight: "bold", g.group)),),
+    g.rows.map(r => (r.name, text(size: 8pt, fill: luma(100), r.kicad), ..cells(r.min), ..cells(r.rec))),
+  )).flatten(),
 )
 
 #v(4pt)

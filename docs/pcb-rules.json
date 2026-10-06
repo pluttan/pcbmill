@@ -1,0 +1,233 @@
+[
+ {
+  "group": "Медь",
+  "rows": [
+   {
+    "name": "Зазор между проводниками",
+    "kicad": "Clearance",
+    "min": 0.3,
+    "rec": 0.4
+   },
+   {
+    "name": "Зазор полигона",
+    "kicad": "Zone clearance",
+    "min": 0.4,
+    "rec": 0.5
+   },
+   {
+    "name": "Ширина сигнального проводника",
+    "kicad": "Track width",
+    "min": 0.3,
+    "rec": 0.4
+   },
+   {
+    "name": "Ширина проводника питания",
+    "kicad": "Track width, Power",
+    "min": 0.8,
+    "rec": 1.0
+   },
+   {
+    "name": "Ширина спицы термобарьера",
+    "kicad": "Thermal relief spoke width",
+    "min": 0.4,
+    "rec": 0.5
+   },
+   {
+    "name": "Отступ меди от контура платы",
+    "kicad": "Copper to edge clearance",
+    "min": 1.0,
+    "rec": 1.5
+   },
+   {
+    "name": "Отступ меди от головки винта M3",
+    "kicad": "Keepout",
+    "min": 1.0,
+    "rec": null
+   }
+  ]
+ },
+ {
+  "group": "Отверстия",
+  "rows": [
+   {
+    "name": "Диаметр сверления",
+    "kicad": "Minimum through hole",
+    "min": 0.8,
+    "rec": null
+   },
+   {
+    "name": "Отверстие под выводы резисторов, диодов, DIP",
+    "kicad": "Drill",
+    "min": null,
+    "rec": 0.8
+   },
+   {
+    "name": "Отверстие под штыревые разъёмы",
+    "kicad": "Drill",
+    "min": null,
+    "rec": 1.0
+   },
+   {
+    "name": "Отверстие под клеммники и силовые выводы",
+    "kicad": "Drill",
+    "min": null,
+    "rec": 1.2
+   },
+   {
+    "name": "Крепёжное отверстие M3",
+    "kicad": "Mounting hole",
+    "min": null,
+    "rec": 3.2
+   },
+   {
+    "name": "Расстояние между отверстиями (край – край)",
+    "kicad": "Hole to hole clearance",
+    "min": 0.8,
+    "rec": 1.0
+   },
+   {
+    "name": "Дискретность диаметров сверления",
+    "kicad": "",
+    "min": 0.1,
+    "rec": null
+   }
+  ]
+ },
+ {
+  "group": "Площадки",
+  "rows": [
+   {
+    "name": "Гарантийный поясок круглой площадки",
+    "kicad": "Annular width",
+    "min": 0.5,
+    "rec": 0.6
+   },
+   {
+    "name": "Гарантийный поясок овала, узкая сторона",
+    "kicad": "Annular width",
+    "min": 0.25,
+    "rec": null
+   },
+   {
+    "name": "Овальная площадка под отверстие 1.0 мм",
+    "kicad": "Pad size",
+    "min": null,
+    "rec": [
+     1.5,
+     2.2
+    ]
+   },
+   {
+    "name": "Расширение окна паяльной маски",
+    "kicad": "Solder mask expansion",
+    "min": 0.05,
+    "rec": 0.1
+   }
+  ]
+ },
+ {
+  "group": "SMD",
+  "rows": [
+   {
+    "name": "Шаг выводов микросхем",
+    "kicad": "Pitch",
+    "min": 0.65,
+    "rec": 1.27
+   },
+   {
+    "name": "Ширина площадки при шаге 0.65 мм",
+    "kicad": "Pad width",
+    "min": null,
+    "rec": 0.35
+   },
+   {
+    "name": "Типоразмер пассивных SMD-компонентов",
+    "kicad": "Footprint",
+    "min": null,
+    "rec": "0805, 1206"
+   },
+   {
+    "name": "Корпуса QFN, BGA и шаг 0.5 мм",
+    "kicad": "",
+    "min": null,
+    "rec": "не применять"
+   }
+  ]
+ },
+ {
+  "group": "Маркировка в меди",
+  "rows": [
+   {
+    "name": "Высота текста",
+    "kicad": "Text height",
+    "min": 2.0,
+    "rec": 2.5
+   },
+   {
+    "name": "Толщина линии текста",
+    "kicad": "Text thickness",
+    "min": 0.3,
+    "rec": 0.4
+   }
+  ]
+ },
+ {
+  "group": "Плата и заготовка",
+  "rows": [
+   {
+    "name": "Число слоёв меди",
+    "kicad": "Copper layers",
+    "min": null,
+    "rec": "1"
+   },
+   {
+    "name": "Переходные отверстия",
+    "kicad": "Vias",
+    "min": null,
+    "rec": "не применять"
+   },
+   {
+    "name": "Проволочные перемычки на плату",
+    "kicad": "Jumpers",
+    "min": null,
+    "rec": "до 5"
+   },
+   {
+    "name": "Форма контура платы",
+    "kicad": "Board outline",
+    "min": null,
+    "rec": "прямоугольник"
+   },
+   {
+    "name": "Наибольшая плата на заготовке 100×100 мм",
+    "kicad": "Board size",
+    "min": null,
+    "rec": [
+     84,
+     84
+    ]
+   },
+   {
+    "name": "Технологическое поле заготовки",
+    "kicad": "Panel margin",
+    "min": null,
+    "rec": 8
+   },
+   {
+    "name": "Зазор между платами на заготовке",
+    "kicad": "Panel spacing",
+    "min": 3,
+    "rec": null
+   },
+   {
+    "name": "Наибольший размер заготовки",
+    "kicad": "Panel size",
+    "min": null,
+    "rec": [
+     600,
+     600
+    ]
+   }
+  ]
+ }
+]
