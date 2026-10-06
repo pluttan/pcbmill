@@ -40,6 +40,8 @@ make selftest
 
 Как рисовать плату, чтобы станок её сделал: [docs/pcb-rules.md](docs/pcb-rules.md), правила DRC для KiCad в `docs/pcbmill.kicad_dru`.
 
+Тестовая плата станка подбирает глубину, подачи, обороты, врезание, сверловку и V-рез: [docs/testboard.md](docs/testboard.md). Файл для pcbscan лежит в `testboard/pcbmill-test.zip`, сборка `make testboard`.
+
 ```
 make cam GERBERS=путь/к/герберам            # односторонняя: берётся единственный слой меди
 make cam GERBERS=путь SIDE=bottom          # медь снизу: зеркально, как будет лежать на столе
