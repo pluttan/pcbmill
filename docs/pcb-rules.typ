@@ -4,7 +4,7 @@
 
 #set document(title: "Правила проектирования плат под станок")
 #set page(paper: "a4", margin: (x: 14mm, y: 12mm))
-#set text(font: "PT Sans", lang: "ru", size: 9.5pt)
+#set text(font: "GOST Type BU", lang: "ru", size: 10.5pt) // docs/fonts, make rules
 #set table(stroke: 0.4pt + luma(170), inset: (x: 5pt, y: 4pt))
 
 #let data = json("pcb-rules.json")
@@ -21,11 +21,11 @@
   ([#x.map(mm).join("×")], [#x.map(mil).join("×")])
 } else { ([#mm(x)], [#mil(x)]) }
 
-#align(center, text(size: 15pt, weight: "bold")[Правила проектирования плат под станок])
+#align(center, text(size: 17pt)[Правила проектирования плат под станок])
 #v(4pt)
 
 #table(
-  columns: (1fr, 104pt, 34pt, 36pt, 54pt, 72pt),
+  columns: (1fr, 128pt, 30pt, 34pt, 50pt, 66pt),
   align: (left + horizon, left + horizon, right + horizon, right + horizon, right + horizon, right + horizon),
   table.header(
     table.cell(rowspan: 2, align: horizon, text(weight: "bold")[Параметр]),
@@ -36,12 +36,9 @@
   ),
   ..data.map(g => (
     (table.cell(colspan: 6, fill: luma(232), text(weight: "bold", g.group)),),
-    g.rows.map(r => (r.name, text(size: 8pt, fill: luma(100), r.kicad), ..cells(r.min), ..cells(r.rec))),
+    g.rows.map(r => (r.name, text(size: 9pt, fill: luma(100), r.kicad), ..cells(r.min), ..cells(r.rec))),
   )).flatten(),
 )
 
 #v(4pt)
-#text(size: 9pt, fill: luma(90))[
-  На сайте: #link("https://157.22.189.111:8445/")[`https://157.22.189.111:8445/`] (таблица, этот PDF и правила DRC для KiCad). \
-  DRC KiCad: `pcbmill.kicad_dru` рядом с платой как `<имя платы>.kicad_dru`.
-]
+#link("https://157.22.189.111:8445/")[https://157.22.189.111:8445/]

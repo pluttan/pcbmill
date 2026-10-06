@@ -8,7 +8,8 @@ import html
 import json
 import sys
 
-STYLE = """body { max-width: 760px; margin: 16px auto; padding: 0 12px; }
+STYLE = """@font-face { font-family: "GOST Type BU"; src: url("GOSTtypeB.ttf"); }
+body { max-width: 760px; margin: 16px auto; padding: 0 12px; font-family: "GOST Type BU", sans-serif; }
 table { border-collapse: collapse; }
 td, th { border: 1px solid #999; padding: 2px 8px; text-align: left; }
 td.n { text-align: right; }
