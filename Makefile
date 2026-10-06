@@ -8,9 +8,12 @@ LOG     ?=
 DIALECT ?= grbl
 SIDE    ?= auto
 
-.PHONY: all install cam probe level show check selftest calib scan-demo win7 mac test clean
+.PHONY: all rules install cam probe level show check selftest calib scan-demo win7 mac test clean
 
 all: install
+
+rules:            ## правила проектирования плат → docs/pcb-rules.pdf
+	typst compile docs/pcb-rules.typ docs/pcb-rules.pdf
 
 install:
 	python3.12 -m venv $(VENV) && $(PIP) install -U pip && $(PIP) install -r requirements.txt
