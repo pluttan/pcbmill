@@ -22,7 +22,7 @@ rules:            ## правила проектирования плат → do
 	cp docs/pcb-rules.pdf docs/pcbmill.kicad_dru build/pcb-rules/
 
 rules-publish: rules  ## страница правил на https://157.22.189.111:8445/
-	tar -C build/pcb-rules -cf - . | ssh $(RULES_HOST) 'mkdir -p $(RULES_DIR) && tar -C $(RULES_DIR) --no-same-owner -xf - && chmod -R a+rX $(RULES_DIR)'
+	COPYFILE_DISABLE=1 tar -C build/pcb-rules -cf - . | ssh $(RULES_HOST) 'mkdir -p $(RULES_DIR) && tar -C $(RULES_DIR) --no-same-owner -xf - && chmod -R a+rX $(RULES_DIR)'
 
 install:
 	python3.12 -m venv $(VENV) && $(PIP) install -U pip && $(PIP) install -r requirements.txt

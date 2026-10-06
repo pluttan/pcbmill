@@ -41,4 +41,7 @@
 )
 
 #v(4pt)
-#text(size: 9pt, fill: luma(90))[DRC KiCad: `docs/pcbmill.kicad_dru` рядом с платой как `<имя платы>.kicad_dru`.]
+#text(size: 9pt, fill: luma(90))[
+  На сайте: #link("https://157.22.189.111:8445/")[`https://157.22.189.111:8445/`] (таблица, этот PDF и правила DRC для KiCad). \
+  DRC KiCad: `pcbmill.kicad_dru` рядом с платой как `<имя платы>.kicad_dru`.
+]
