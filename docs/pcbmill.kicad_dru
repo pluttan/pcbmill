@@ -25,8 +25,9 @@
 	(condition "A.Type == 'Pad' && A.Pad_Type == 'Through-hole' && A.Pad_Shape != 'Circle'")
 	(constraint annular_width (min 0.25mm)))
 
+# one drill for the whole board: every hole is 1.0 mm
 (rule "pcbmill hole"
-	(constraint hole_size (min 0.8mm)))
+	(constraint hole_size (min 1mm) (max 1mm)))
 
 (rule "pcbmill hole to hole"
 	(constraint hole_to_hole (min 0.8mm)))

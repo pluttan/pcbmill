@@ -37,12 +37,6 @@
     "kicad": "Copper to edge clearance",
     "min": 1.0,
     "rec": 1.5
-   },
-   {
-    "name": "Зазор медь-отверстие (крепёж M3)",
-    "kicad": "Copper to hole clearance",
-    "min": 2.2,
-    "rec": null
    }
   ]
  },
@@ -50,46 +44,16 @@
   "group": "Отверстия",
   "rows": [
    {
-    "name": "Размер сверла",
-    "kicad": "Minimum drill size",
-    "min": 0.8,
-    "rec": null
-   },
-   {
-    "name": "Размер сверла (резисторы, диоды, DIP)",
+    "name": "Размер сверла (все отверстия)",
     "kicad": "Hole size",
-    "min": null,
-    "rec": 0.8
-   },
-   {
-    "name": "Размер сверла (штыревые разъёмы)",
-    "kicad": "Hole size",
-    "min": null,
+    "min": 1.0,
     "rec": 1.0
-   },
-   {
-    "name": "Размер сверла (клеммники)",
-    "kicad": "Hole size",
-    "min": null,
-    "rec": 1.2
-   },
-   {
-    "name": "Размер сверла (крепёж M3)",
-    "kicad": "Hole size",
-    "min": null,
-    "rec": 3.2
    },
    {
     "name": "Зазор между отверстиями",
     "kicad": "Hole to hole clearance",
     "min": 0.8,
     "rec": 1.0
-   },
-   {
-    "name": "Шаг размеров сверла",
-    "kicad": "",
-    "min": 0.1,
-    "rec": null
    }
   ]
  },
@@ -109,7 +73,13 @@
     "rec": null
    },
    {
-    "name": "Размер площадки (овал, сверло 1.0)",
+    "name": "Размер площадки (круг)",
+    "kicad": "Pad size",
+    "min": 2.0,
+    "rec": 2.2
+   },
+   {
+    "name": "Размер площадки (овал)",
     "kicad": "Pad size",
     "min": null,
     "rec": [
@@ -190,7 +160,7 @@
     "name": "Перемычки",
     "kicad": "Jumpers",
     "min": null,
-    "rec": "до 5"
+    "rec": "до 50"
    },
    {
     "name": "Контур платы",
@@ -199,12 +169,12 @@
     "rec": "прямоугольник"
    },
    {
-    "name": "Размер платы (заготовка 100×100 мм)",
+    "name": "Размер платы (наибольший)",
     "kicad": "Board size",
     "min": null,
     "rec": [
-     84,
-     84
+     184,
+     184
     ]
    },
    {
@@ -220,12 +190,12 @@
     "rec": null
    },
    {
-    "name": "Размер заготовки",
+    "name": "Размер заготовки (наибольший)",
     "kicad": "Panel size",
     "min": null,
     "rec": [
-     600,
-     600
+     200,
+     200
     ]
    }
   ]
