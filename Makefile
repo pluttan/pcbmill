@@ -8,7 +8,7 @@ LOG     ?=
 DIALECT ?= grbl
 SIDE    ?= auto
 
-.PHONY: all rules rules-publish install cam probe level show check selftest calib scan-demo win7 mac test clean
+.PHONY: all rules rules-publish testboard install cam probe level show check selftest calib scan-demo win7 mac test clean
 
 all: install
 
@@ -20,6 +20,19 @@ rules:            ## правила проектирования плат → do
 	mkdir -p build/pcb-rules
 	python3 tools/pcb_rules_html.py docs/pcb-rules.json build/pcb-rules
 	cp docs/pcb-rules.pdf docs/pcbmill.kicad_dru docs/fonts/GOSTtypeB.ttf build/pcb-rules/
+
+KICAD ?= /Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli
+TB    := build/testboard
+
+testboard:        ## тестовая плата → testboard/pcbmill-test.zip для pcbscan
+	rm -rf $(TB) && python3 testboard/gen.py $(TB)
+	cp docs/pcbmill.kicad_dru $(TB)/pcbmill-test.kicad_dru
+	$(KICAD) pcb drc --refill-zones --save-board --format json -o $(TB)/drc.json $(TB)/pcbmill-test.kicad_pcb >/dev/null
+	python3 testboard/drc_summary.py $(TB)/drc.json
+	$(KICAD) pcb export gerbers --layers F.Cu,F.Mask,Edge.Cuts -o $(TB)/gerber/ $(TB)/pcbmill-test.kicad_pcb >/dev/null
+	$(KICAD) pcb export drill --format excellon --excellon-units mm -o $(TB)/gerber/ $(TB)/pcbmill-test.kicad_pcb >/dev/null
+	rm -f testboard/pcbmill-test.zip && cd $(TB)/gerber && zip -qX ../../../testboard/pcbmill-test.zip *
+	$(KICAD) pcb export pdf --layers F.Cu,F.Mask,Edge.Cuts --mode-single -o $(TB)/pcbmill-test.pdf $(TB)/pcbmill-test.kicad_pcb >/dev/null
 
 rules-publish: rules  ## страница правил на https://157.22.189.111:8445/
 	COPYFILE_DISABLE=1 tar -C build/pcb-rules -cf - . | ssh $(RULES_HOST) 'mkdir -p $(RULES_DIR) && tar -C $(RULES_DIR) --no-same-owner -xf - && chmod -R a+rX $(RULES_DIR)'
