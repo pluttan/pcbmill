@@ -33,10 +33,11 @@ type MCU struct {
 	lastSeen time.Time
 	dead     error
 	port     io.ReadWriteCloser
+	jobs     chan mcuJob // file transfers, run between polls (inbox.go)
 }
 
 func NewMCU(p io.ReadWriteCloser) *MCU {
-	m := &MCU{port: p, lastSeen: time.Now()}
+	m := &MCU{port: p, lastSeen: time.Now(), jobs: make(chan mcuJob)}
 	go m.run()
 	return m
 }
@@ -74,6 +75,7 @@ func (m *MCU) run() {
 			}
 		}
 		time.Sleep(50 * time.Millisecond)
+		m.runJob()
 	}
 }
 
@@ -127,6 +129,12 @@ func (m *MCU) Close() { m.port.Close() }
 // findMCU keeps one connection for the whole session: Windows will not open a COM
 // port twice, so reopening it for every menu item failed every other time.
 func findMCU(want string) (*MCU, string, error) {
+	mcuMu.Lock()
+	defer mcuMu.Unlock()
+	return findMCUlocked(want)
+}
+
+func findMCUlocked(want string) (*MCU, string, error) {
 	if mcuCache != nil {
 		if mcuCache.Alive() == nil {
 			return mcuCache, mcuName, nil

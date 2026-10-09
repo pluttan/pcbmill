@@ -37,15 +37,20 @@ func jobMain(o opts) {
 	mainActs = make(chan func() error, 1)
 	theJob = u
 	defer func() { theJob = nil }()
+	if simM == nil {
+		go inboxLoop(o)
+	}
 	u.sel[0], u.sel[1] = u.next(), 0
 	for !u.quit {
 		simFit(j.W, j.H) // the virtual blank follows the sheet
 		cur, crumb = nil, "задание"
 		app.Show(u)
 		act := <-mainActs
+		inboxBusy.Store(true) // the probe is the work's now
 		if err := act(); err != nil && !errors.Is(err, errBack) {
 			alert(err)
 		}
+		inboxBusy.Store(false)
 		u.gen++
 	}
 }
