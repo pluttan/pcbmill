@@ -63,6 +63,7 @@ func (u *jobUI) programs(relayout bool) error {
 	if err := j.writeProgs(ops); err != nil {
 		return err
 	}
+	j.markCam(u.c)
 	for k := range j.Done { // the programs changed: what was done with the old ones is forgotten
 		if strings.HasPrefix(k, "sheet_") {
 			delete(j.Done, k)
@@ -132,6 +133,9 @@ func (u *jobUI) scan() error {
 
 // run: one program, then back to the screen with the next stage chosen.
 func (u *jobUI) run(f, stage string) error {
+	if err := u.freshProgs(); err != nil {
+		return err
+	}
 	done, err := runProg(u.o, u.j, u.c, f, stage)
 	if err != nil || !done {
 		return err
@@ -150,6 +154,9 @@ func (u *jobUI) run(f, stage string) error {
 
 // redo: a stage again inside a circle, deeper.
 func (u *jobUI) redo(files []string, stage string) error {
+	if err := u.freshProgs(); err != nil {
+		return err
+	}
 	var names []string
 	for _, f := range files {
 		names = append(names, strings.TrimSuffix(strings.TrimPrefix(filepath.Base(f), "sheet_"), ".tap"))
@@ -197,4 +204,35 @@ func (u *jobUI) redo(files []string, stage string) error {
 	}
 	_, err = runProg(u.o, u.j, u.c, dst, stage)
 	return err
+}
+
+// camSig: the numbers the programs on disk were written with.
+func camSig(c camCfg) string { return fmt.Sprintf("%+v", c) }
+
+func (j *Job) camSigPath() string { return filepath.Join(j.Dir, "cam.sig") }
+
+func (j *Job) markCam(c camCfg) { os.WriteFile(j.camSigPath(), []byte(camSig(c)), 0o644) }
+
+// freshProgs: the numbers changed after the programs were written (the speed
+// set after the map, or a restart lost the Пересчитать line): write them again
+// with the same layout before a stage runs. The map and the marks stay.
+func (u *jobUI) freshProgs() error {
+	j := u.j
+	if b, err := os.ReadFile(j.camSigPath()); err == nil && string(b) == camSig(u.c) && !u.camDirty {
+		return nil
+	}
+	if u.relay {
+		return fmt.Errorf("числа меняют раскладку: сначала Платы / Разложить и посчитать")
+	}
+	sayHint("Числа программ изменились: пересчитываю...")
+	ops, err := j.cam(u.c, func(s string) { sayHint(s) })
+	if err != nil {
+		return err
+	}
+	if err := j.writeProgs(ops); err != nil {
+		return err
+	}
+	j.markCam(u.c)
+	u.camDirty = false
+	return nil
 }
