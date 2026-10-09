@@ -206,8 +206,12 @@ func (u *jobUI) redo(files []string, stage string) error {
 	return err
 }
 
+// camVersion goes up when the programs come out different for the same
+// numbers (2: the V-groove to the edge of the sheet): the next stage rewrites them.
+const camVersion = 2
+
 // camSig: the numbers the programs on disk were written with.
-func camSig(c camCfg) string { return fmt.Sprintf("%+v", c) }
+func camSig(c camCfg) string { return fmt.Sprintf("v%d %+v", camVersion, c) }
 
 func (j *Job) camSigPath() string { return filepath.Join(j.Dir, "cam.sig") }
 

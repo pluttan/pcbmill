@@ -194,7 +194,11 @@ func TestJobPrograms(t *testing.T) {
 				t.Errorf("маска не вскрывает круг в ноле: рез от X%.2f Y%.2f", cut.X0, cut.Y0)
 			}
 		}
-		if cut.X0 < lo || cut.Y0 < lo || cut.X1 > j.W-j.Margin+1 || cut.Y1 > j.H-j.Margin+1 {
+		hi := [2]float64{j.W - j.Margin + 1, j.H - j.Margin + 1}
+		if strings.Contains(f, "sheet_4_vcut.") { // the grooves go on to the edge of the sheet
+			lo, hi = 0, [2]float64{j.W, j.H}
+		}
+		if cut.X0 < lo || cut.Y0 < lo || cut.X1 > hi[0] || cut.Y1 > hi[1] {
 			t.Errorf("%s: рез X %.1f..%.1f Y %.1f..%.1f за листом", filepath.Base(f), cut.X0, cut.X1, cut.Y0, cut.Y1)
 		}
 		title, _, _, _ := progNotes(f)

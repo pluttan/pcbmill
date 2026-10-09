@@ -626,6 +626,11 @@ func (j *Job) cam(c camCfg, say func(string)) ([]*camOp, error) {
 		merged[op.file] = op
 		keys = append(keys, op.file)
 	}
+	if m := merged["4_vcut"]; m != nil { // the sides on to the edge: the board breaks straight
+		ext := j.vcutReach(mirror, c)
+		m.paths = append(m.paths, ext...)
+		m.notes = append(m.notes, "канавки продлены по сторонам плат до края листа")
+	}
 	if j.VProbe != nil && merged["4_vcut"] != nil {
 		op := vcutTest(*j.VProbe, c)
 		op.tool = merged["4_vcut"].tool
