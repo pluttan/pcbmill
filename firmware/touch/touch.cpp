@@ -13,6 +13,7 @@
 //   "L"      -> "E <n> <bytes> <md5> <name>" per file, then "END"
 //   "R" + c  -> read file n = c - '0'; "N" -> its next CHUNK bytes, raw
 //   "F"      -> read the newest file: "FILE <bytes> <md5> <name>" or "NOFILE"
+//   "W"      -> "WIFI up|down <ip> clients <n> power <q>": is the point there
 //   "S"      -> a PowerShell 2.0 script that takes the newest file over $p;
 //               the first time, on the PC, one typed line runs it:
 //   $p=New-Object IO.Ports.SerialPort COM5,115200;$p.Open();$p.DiscardInBuffer();$p.Write('S');sleep 1;iex $p.ReadExisting()
@@ -98,6 +99,7 @@ String md5hex(const uint8_t *m) {
 // ==========================
 
 WebServer web(80);
+bool apUp = false; // softAP started
 uint32_t upAt, upStart, upFill;
 bool upFail;
 String upName, upMsg;
@@ -274,7 +276,11 @@ void setup() {
   report();
 #ifdef ESP32
   loadTable();
-  WiFi.softAP("pcbscan", "pcbmill1");
+  // the SuperMini's regulator cannot feed full power: the point drops or
+  // does not show; set lower after softAP, before it the setting is lost
+  WiFi.mode(WIFI_AP);
+  apUp = WiFi.softAP("pcbscan", "pcbmill1", 6);
+  WiFi.setTxPower(WIFI_POWER_8_5dBm);
   web.on("/", HTTP_GET, onPage);
   web.on("/upload", HTTP_POST, [] { web.send(upMsg.startsWith("Принят") ? 200 : 507, "text/plain; charset=utf-8", upMsg); },
          onUpload);
@@ -325,6 +331,9 @@ void loop() {
     else if (c == 'N') readNext();
     else if (c == 'F') newest();
     else if (c == 'S') Serial.print(RECV);
+    else if (c == 'W')
+      Serial.printf("WIFI %s %s clients %d power %d\n", apUp ? "up" : "down", WiFi.softAPIP().toString().c_str(),
+                    WiFi.softAPgetStationNum(), (int)WiFi.getTxPower());
 #endif
   }
 #ifdef ESP32
