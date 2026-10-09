@@ -22,6 +22,9 @@ type Port struct{ io.ReadWriteCloser }
 
 func OpenPort(name string) (*Port, error) { return nil, errors.New("только Windows") }
 
+func (p *Port) SetDTR(bool) error { return nil }
+func (p *Port) SetRTS(bool) error { return nil }
+
 type WinKeys struct {
 	Title, MDIKey string
 	Delay         interface{}

@@ -22,6 +22,7 @@ var (
 	pSetCommState       = kernel32.NewProc("SetCommState")
 	pSetCommTimeouts    = kernel32.NewProc("SetCommTimeouts")
 	pPurgeComm          = kernel32.NewProc("PurgeComm")
+	pEscapeCommFunction = kernel32.NewProc("EscapeCommFunction")
 	pEnumWindows        = user32.NewProc("EnumWindows")
 	pGetWindowTextW     = user32.NewProc("GetWindowTextW")
 	pIsWindowVisible    = user32.NewProc("IsWindowVisible")
@@ -118,6 +119,21 @@ func (p *Port) Write(b []byte) (int, error) {
 }
 
 func (p *Port) Close() error { return syscall.CloseHandle(p.h) }
+
+// SetDTR, SetRTS: the lines the ESP32 resets by (espflash.go).
+func (p *Port) SetDTR(on bool) error { return p.escape(on, 5, 6) }
+func (p *Port) SetRTS(on bool) error { return p.escape(on, 3, 4) }
+
+func (p *Port) escape(on bool, set, clr uintptr) error {
+	f := clr
+	if on {
+		f = set
+	}
+	if r, _, e := pEscapeCommFunction.Call(uintptr(p.h), f); r == 0 {
+		return e
+	}
+	return nil
+}
 
 // ComPorts lists HKLM\HARDWARE\DEVICEMAP\SERIALCOMM.
 func ComPorts() []string {

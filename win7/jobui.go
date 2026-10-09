@@ -191,7 +191,7 @@ func (u *jobUI) roots() []jnode {
 		st.about = []string{fmt.Sprintf("Файлов: %d.", len(files))}
 		out = append(out, st)
 	}
-	out = append(out, jnode{title: "Сервис", branch: true, icon: "·", about: []string{"Провод, связь, ручной режим, карман в пластине, эмуляция."}})
+	out = append(out, jnode{title: "Сервис", branch: true, icon: "·", about: []string{"Провод, связь, ручной режим, карман в пластине, Wi-Fi и прошивка щупа."}})
 	out = append(out, jnode{title: "Выход", icon: "·", act: func() error {
 		if confirm("Выйти из pcbscan?") {
 			u.quit = true
@@ -309,7 +309,11 @@ func (u *jobUI) kids(i int) []jnode {
 			jnode{icon: "·", title: "Ручной режим", act: func() error { return cmdManual(o) }},
 			jnode{icon: "·", title: "Найти координаты NcStudio", act: func() error { return cmdFindCoords(o) }},
 			jnode{icon: "·", title: "Карман в жертвенной пластине", act: u.pocket,
-				about: []string{"Гнездо под заготовку фрезой 8 мм: угол гнезда в нуле листа."}})
+				about: []string{"Гнездо под заготовку фрезой 8 мм: угол гнезда в нуле листа."}},
+			jnode{icon: "·", title: "Wi-Fi щупа на 10 минут", act: func() error { return cmdProbeWiFi(o) },
+				about: []string{"Точка pcbscan для передачи файлов с телефона или ноутбука."}},
+			jnode{icon: "·", title: "Перепрошить щуп", act: func() error { return cmdFlashProbe(o) },
+				about: []string{"Записать в ESP32 щупа прошивку, встроенную в pcbscan. Файлы щупа останутся."}})
 		return out
 	}
 	return nil

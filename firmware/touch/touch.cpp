@@ -8,11 +8,12 @@
 // OUT_PIN mirrors contact (LOW = touching) so it can also feed a machine input.
 //
 // ESP32 also carries files to the machine PC, which has no network: a Wi-Fi
-// point "pcbscan" (password pcbmill1) with a page at http://192.168.4.1 takes
+// point "pcbscan" (password pcbmill1; off until BOOT or "A") with a page at http://192.168.4.1 takes
 // files (the page gzips them) into the flash; pcbscan takes them over the port:
 //   "L"      -> "E <n> <bytes> <md5> <name>" per file, then "END"
 //   "R" + c  -> read file n = c - '0'; "N" -> its next CHUNK bytes, raw
 //   "F"      -> read the newest file: "FILE <bytes> <md5> <name>" or "NOFILE"
+//   "A" / "a" -> the Wi-Fi point on (for 10 idle minutes) / off; BOOT is "A"
 //   "W"      -> "WIFI up|down <ip> clients <n> power <q>": is the point there
 //   "S"      -> a PowerShell 2.0 script that takes the newest file over $p;
 //               the first time, on the PC, one typed line runs it:
@@ -100,6 +101,31 @@ String md5hex(const uint8_t *m) {
 
 WebServer web(80);
 bool apUp = false; // softAP started
+unsigned long apLast; // the last sign of use: on, a client, an upload
+
+// The radio is off unless asked for (the BOOT button, "A" from pcbscan): next
+// to the antenna the touch input read contact all the time while it was on.
+const int BOOT_PIN = 9;
+const unsigned long AP_IDLE = 10 * 60 * 1000UL;
+
+void apOn() {
+  apLast = millis();
+  if (apUp) return;
+  // the SuperMini's regulator cannot feed full power: the point drops or
+  // does not show; set lower after softAP, before it the setting is lost
+  WiFi.mode(WIFI_AP);
+  apUp = WiFi.softAP("pcbscan", "pcbmill1", 6);
+  WiFi.setTxPower(WIFI_POWER_8_5dBm);
+  web.begin();
+}
+
+void apOff() {
+  if (!apUp) return;
+  web.stop();
+  WiFi.softAPdisconnect(true);
+  WiFi.mode(WIFI_OFF);
+  apUp = false;
+}
 uint32_t upAt, upStart, upFill;
 bool upFail;
 String upName, upMsg;
@@ -276,11 +302,7 @@ void setup() {
   report();
 #ifdef ESP32
   loadTable();
-  // the SuperMini's regulator cannot feed full power: the point drops or
-  // does not show; set lower after softAP, before it the setting is lost
-  WiFi.mode(WIFI_AP);
-  apUp = WiFi.softAP("pcbscan", "pcbmill1", 6);
-  WiFi.setTxPower(WIFI_POWER_8_5dBm);
+  pinMode(BOOT_PIN, INPUT_PULLUP);
   web.on("/", HTTP_GET, onPage);
   web.on("/upload", HTTP_POST, [] { web.send(upMsg.startsWith("Принят") ? 200 : 507, "text/plain; charset=utf-8", upMsg); },
          onUpload);
@@ -289,7 +311,6 @@ void setup() {
     web.sendHeader("Location", "/");
     web.send(303);
   });
-  web.begin();
 #endif
 }
 
@@ -331,12 +352,19 @@ void loop() {
     else if (c == 'N') readNext();
     else if (c == 'F') newest();
     else if (c == 'S') Serial.print(RECV);
+    else if (c == 'A') apOn();
+    else if (c == 'a') apOff();
     else if (c == 'W')
       Serial.printf("WIFI %s %s clients %d power %d\n", apUp ? "up" : "down", WiFi.softAPIP().toString().c_str(),
                     WiFi.softAPgetStationNum(), (int)WiFi.getTxPower());
 #endif
   }
 #ifdef ESP32
-  web.handleClient();
+  if (digitalRead(BOOT_PIN) == LOW) apOn();
+  if (apUp) {
+    web.handleClient();
+    if (WiFi.softAPgetStationNum() > 0) apLast = millis();
+    if (millis() - apLast > AP_IDLE) apOff();
+  }
 #endif
 }
