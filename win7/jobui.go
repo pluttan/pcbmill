@@ -191,7 +191,7 @@ func (u *jobUI) roots() []jnode {
 		st.about = []string{fmt.Sprintf("Файлов: %d.", len(files))}
 		out = append(out, st)
 	}
-	out = append(out, jnode{title: "Сервис", branch: true, icon: "·", about: []string{"Провод, связь, ручной режим, эмуляция."}})
+	out = append(out, jnode{title: "Сервис", branch: true, icon: "·", about: []string{"Провод, связь, ручной режим, карман в пластине, эмуляция."}})
 	out = append(out, jnode{title: "Выход", icon: "·", act: func() error {
 		if confirm("Выйти из pcbscan?") {
 			u.quit = true
@@ -307,7 +307,9 @@ func (u *jobUI) kids(i int) []jnode {
 			jnode{icon: "·", title: "Проверить провод (МК)", act: func() error { return cmdWire(o) }},
 			jnode{icon: "·", title: "Проверить связь с NcStudio", act: func() error { return cmdNcTest(o) }},
 			jnode{icon: "·", title: "Ручной режим", act: func() error { return cmdManual(o) }},
-			jnode{icon: "·", title: "Найти координаты NcStudio", act: func() error { return cmdFindCoords(o) }})
+			jnode{icon: "·", title: "Найти координаты NcStudio", act: func() error { return cmdFindCoords(o) }},
+			jnode{icon: "·", title: "Карман в жертвенной пластине", act: u.pocket,
+				about: []string{"Гнездо под заготовку фрезой 8 мм: угол гнезда в нуле листа."}})
 		return out
 	}
 	return nil
