@@ -124,7 +124,7 @@ func runProg(o opts, j *Job, c camCfg, file, stage string) (bool, error) {
 		}
 		d := &dialog{title: "Инструмент", text: []string{
 			"Нужен: " + tool, "Сейчас по записи: " + was, "",
-			"Поставьте его, опустите на 1-2 мм над медью у " + corner + ".",
+			"Поставьте его, опустите не выше " + num(zeroSearch) + " мм над медью у " + corner + ".",
 			"Дальше касание и Z0 там."},
 			buttons: []string{"Поставил, Z0", "Отмена"}, sel: 0, cancel: 1}
 		if d.show() != 0 {

@@ -5,6 +5,7 @@ package main
 // its own page, asks in dialogs and leaves the page until Готово.
 
 import (
+	"errors"
 	"fmt"
 	"image"
 	"os"
@@ -122,7 +123,8 @@ func cmdNcTest(o opts) error {
 }
 
 // zeroAt: one slow touch of the copper at the point, then the operator zeroes
-// Z in NcStudio there and the tool goes up. errBack: the operator said no.
+// Z in NcStudio there and the tool goes up. errBack: the operator said no,
+// or pressed Отмена on the way; the tool goes back up then.
 func zeroAt(o opts, title string, at [2]float64, why string) error {
 	p := newPage(title, "Ищу МК на COM-портах...")
 	m, _, err := findTouch(o.port)
@@ -132,7 +134,7 @@ func zeroAt(o opts, title string, at [2]float64, why string) error {
 	p.set(func() {
 		p.head = "Ноль Z"
 		p.info = []string{
-			"Фреза стоит на 1-2 мм над медью. Будет одно медленное касание в " +
+			fmt.Sprintf("Фреза стоит над медью не выше %s мм, можно касаться меди. Будет медленное касание в ", num(zeroSearch)) +
 				fmt.Sprintf("♦ X%.2f Y%.2f", at[0], at[1]) + " (" + why + "),",
 			"потом нужно обнулить Z в NcStudio.",
 		}
@@ -147,9 +149,30 @@ func zeroAt(o opts, title string, at [2]float64, why string) error {
 	if err := nc.Grab(); err != nil {
 		return err
 	}
-	s := newScanner(o, nc, m)
-	s.StepCoarse = 0.02 // the thin tip goes down in small steps
-	z, err := s.TouchAt(at[0], at[1], 0)
+	p.buttons(pageBtn{id: "cancel", label: "Отмена", kind: ui.BtnDanger, key: ui.KeyEsc})
+	defer p.buttons()
+	s := newScanner(o, zeroStop{nc, p}, m)
+	s.Search = zeroSearch
+	s.StepCoarse = 0.05 // the thin tip: small steps, the fine touch follows
+	_, _, z0 := nc.Pos()
+	back := func() error { // up to where it started, the zero not taken
+		nc.Grab()
+		nc.RapidZ(z0)
+		return errBack
+	}
+	if m.State() { // set down on the copper: up first, or the touch sees nothing
+		if err := s.liftUntilOpenN(z0, 0.1, 20); err != nil {
+			if errors.Is(err, errZeroStop) {
+				return back()
+			}
+			return err
+		}
+		_, _, z0 = nc.Pos()
+	}
+	z, err := s.TouchAt(at[0], at[1], z0)
+	if errors.Is(err, errZeroStop) {
+		return back()
+	}
 	if err != nil {
 		return err
 	}
@@ -158,8 +181,23 @@ func zeroAt(o opts, title string, at [2]float64, why string) error {
 	}
 	setCopperZ(z)
 	machineBusy(false)
+	p.buttons()
 	logLine("♦ КОНТАКТ: фреза касается меди.")
-	message("Обнулите Z", "Фреза касается меди.", "Обнулите Z в NcStudio (рабочая система координат), затем OK здесь.")
+	d := &dialog{title: "Обнулите Z в NcStudio", kind: dlgAsk, text: []string{
+		"Фреза касается меди.",
+		"Обнулите Z в NcStudio (рабочая система координат) и вернитесь сюда.",
+		"Без обнуления программа уйдёт на неверную глубину.",
+		"Отмена поднимет фрезу, ноль не будет записан."},
+		buttons: []string{"Z обнулён", "Отмена"}, sel: 0, cancel: 1}
+	if d.show() != 0 {
+		setCopperZ(0)
+		machineBusy(true)
+		if err := nc.Grab(); err != nil {
+			return err
+		}
+		nc.RapidZ(z + o.clear*3)
+		return errBack
+	}
 	if simM != nil {
 		simM.ZeroZ() // what the operator does in NcStudio
 		logLine("эмуляция: Z обнулён в NcStudio на этой высоте")
@@ -171,6 +209,37 @@ func zeroAt(o opts, title string, at [2]float64, why string) error {
 		return err
 	}
 	return nc.RapidZ(o.clear * 3)
+}
+
+// zeroSearch: how high over the copper the touch for Z0 may start, mm.
+const zeroSearch = 6.0
+
+var errZeroStop = errors.New("Z0 отменён")
+
+// zeroStop: the Отмена button of the page stops the touch before the next
+// step; a click on the page does not take the focus from NcStudio.
+type zeroStop struct {
+	Machine
+	p *page
+}
+
+func (z zeroStop) stopped() bool {
+	id, ok := z.p.pressed()
+	return ok && id == "cancel"
+}
+
+func (z zeroStop) MoveZ(v, feed float64) error {
+	if z.stopped() {
+		return errZeroStop
+	}
+	return z.Machine.MoveZ(v, feed)
+}
+
+func (z zeroStop) RapidXY(x, y float64) error {
+	if z.stopped() {
+		return errZeroStop
+	}
+	return z.Machine.RapidXY(x, y)
 }
 
 // ncWindows lists the controls of NcStudio; the emulation has its own.

@@ -228,7 +228,7 @@ func TestGUIFlow(t *testing.T) {
 	dr.typ("д")
 	dr.wait("Обнулите Z", 60*time.Second)
 	dr.shot("zero_touch")
-	dr.click("OK")
+	dr.click("Z обнулён")
 	dr.wait("Напечатайте yes", 30*time.Second)
 	dr.typ("нуы")
 	dr.key(ui.KeyEnter)
