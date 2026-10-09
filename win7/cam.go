@@ -47,7 +47,7 @@ const (
 
 // defaultCam: the numbers of machine.toml, which the Vesi programs ran with.
 func defaultCam() camCfg {
-	return camCfg{Tip: 0.1, Angle: 45, Spindle: 8000, IsoDepth: 0.1, Passes: 2, IsoFeed: 300, Plunge: 200,
+	return camCfg{Tip: 0.1, Angle: 45, Spindle: 24000, IsoDepth: 0.1, Passes: 2, IsoFeed: 300, Plunge: 200,
 		MaskDepth: 0.03, MaskFeed: 200, MaskTest: true, DrillMode: drillThrough, Thickness: 1.5, DrillFeed: 60,
 		VDepth: 0.8, VStep: 0.2, VFeed: 200, Side: sideTop}
 }

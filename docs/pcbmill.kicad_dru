@@ -2,14 +2,14 @@
 # Rules of a board milled by pcbscan (docs/pcb-rules.md).
 # Copy next to the .kicad_pcb as <board name>.kicad_dru; KiCad DRC reads it.
 
-# a V-bit 0.1 mm / 45 deg at 0.1 mm cuts 0.18 mm; 0.3 leaves room for the
-# height map being off by 0.05 mm
+# a V-bit 0.1 mm / 45 deg at 0.1 mm cuts 0.18 mm; 0.2 cut clean on the test
+# board (09.10.2026, 24000 rpm, 300 mm/min); 0.3 where there is room
 (rule "pcbmill clearance"
-	(constraint clearance (min 0.3mm)))
+	(constraint clearance (min 0.2mm) (opt 0.3mm)))
 
-# thinner copper lifts off the board when soldered
+# 0.2 came out whole on the test board; thinner copper lifts off when soldered
 (rule "pcbmill track"
-	(constraint track_width (min 0.3mm)))
+	(constraint track_width (min 0.2mm) (opt 0.3mm)))
 
 # the holes are not plated: a via joins nothing
 (rule "pcbmill no vias"
