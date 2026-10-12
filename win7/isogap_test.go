@@ -47,5 +47,8 @@ func TestIsoNarrowDiagonal(t *testing.T) {
 	if long < 25 {
 		t.Errorf("самый длинный путь %.1f мм: зазор длиной 28 мм не пройден целиком", long)
 	}
+	if br := isoBridges(g, op, c.cutWidth(c.IsoDepth)); len(br) > 0 {
+		t.Errorf("зазор недорезан: медь осталась соединённой в %v", br)
+	}
 	t.Logf("путей %d, самый длинный %.1f мм", len(op.paths), long)
 }

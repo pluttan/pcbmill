@@ -200,6 +200,13 @@ func placeOp(op *camOp, pls []place) *camOp {
 // ===  Isolation         ===
 // ==========================
 
+// isoInset: the first pass this many pixels nearer the copper than half the
+// cut. In a gap of about 0.2 mm the band where the tool centre fits is
+// thinner than a pixel and drops out in places: the cut was left undone.
+// A third of a pixel in (about 0.004 mm) keeps the band whole: on the life
+// stand board 5 joined places of copper became the 1 the report names.
+var isoInset = 0.3
+
 // isoCrumb: a piece of a later isolation pass shorter than this is dropped.
 const isoCrumb = 1.0
 
@@ -355,7 +362,11 @@ func isolation(b *board, side string, c camCfg, field []uint16) (*camOp, []uint1
 	}
 	var ts []float64
 	for k := 0; k < c.Passes; k++ {
-		ts = append(ts, ((w/2+float64(k)*step)/r.px+0.5)*distScale)
+		in := 0.0
+		if k == 0 {
+			in = isoInset
+		}
+		ts = append(ts, ((w/2+float64(k)*step)/r.px+0.5-in)*distScale)
 	}
 	// The first pass is kept whole: it is what parts the copper. A later pass
 	// in a gap only a little wider than the first one breaks into crumbs a

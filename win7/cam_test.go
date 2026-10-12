@@ -133,9 +133,11 @@ func TestIsoClearance(t *testing.T) {
 			}
 		}
 	}
-	// the grid is 0.01 mm: a point may stray by a pixel where two pads pinch the path
+	// the grid is 0.01 mm: a point may stray by a pixel where two pads pinch the
+	// path; the first pass is isoInset of a pixel nearer on purpose
 	sort.Float64s(ds)
-	if p1 := ds[len(ds)/100]; worst < w/2-0.015 || p1 < w/2-0.01 {
+	in := isoInset * 0.01
+	if p1 := ds[len(ds)/100]; worst < w/2-0.015-in || p1 < w/2-0.01-in {
 		t.Errorf("фреза ближе к меди: %.3f мм (1%% точек ближе %.3f) при половине реза %.3f", worst, p1, w/2)
 	}
 	if left < 20*right {
