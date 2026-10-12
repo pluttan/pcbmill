@@ -98,7 +98,7 @@ func jobMap(j *Job) (*HeightMap, error) {
 // to spare, so a zero set by hand and no height map are enough. The spot
 // drill is shallow and keeps the touch.
 func throughHoles(file string) bool {
-	b := filepath.Base(strings.ReplaceAll(file, `\`, "/"))
+	b := strings.TrimPrefix(filepath.Base(strings.ReplaceAll(file, `\`, "/")), "sheet_")
 	return strings.HasPrefix(b, holesFile) || strings.HasPrefix(b, "3_drill_") && !strings.HasPrefix(b, "3_drill_spot")
 }
 
