@@ -42,7 +42,12 @@ func (u *jobUI) layout() error {
 func (u *jobUI) programs(relayout bool) error {
 	j := u.j
 	p := newBusyPage("задание / Платы", "Раскладываю и считаю программы...")
+	turned := false
 	if relayout {
+		if u.c.Side == sideTop && j.bottomOnly() { // B.Cu only: milled face up it must be mirrored
+			u.c.Side, turned = sideBottom, true
+			saveCam(exeDir(), u.c)
+		}
 		if err := j.layout(u.mirror(), u.c.MaskTest, u.c.IsoTest); err != nil {
 			return err
 		}
@@ -82,6 +87,9 @@ func (u *jobUI) programs(relayout bool) error {
 		for _, w := range op.warn {
 			info = append(info, "  ▲ "+w)
 		}
+	}
+	if turned {
+		info = append(info, "", "▲ Медь у плат только на нижнем слое (B.Cu): сторона переключена на «низ», программы зеркальные.")
 	}
 	info = append(info, "", "Дальше: Карта высот.")
 	sc := newSheetScene(j, u.mirror(), sheetOverlay{})

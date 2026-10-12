@@ -61,6 +61,19 @@ func (j *Job) zero() pt {
 
 const zeroInset = 2.0
 
+// bottomOnly: every board of the job has copper on the bottom layer only.
+func (j *Job) bottomOnly() bool {
+	if j.loadBoards() != nil || len(j.boards) == 0 {
+		return false
+	}
+	for _, b := range j.boards {
+		if b == nil || b.copper[lyTop] != nil || b.copper[lyBottom] == nil {
+			return false
+		}
+	}
+	return true
+}
+
 // fillsSheet: one board lies over the whole blank: nothing to break off.
 func (j *Job) fillsSheet(mirror bool) bool {
 	u := j.used(mirror)

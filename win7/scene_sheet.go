@@ -119,7 +119,14 @@ func (s *sheetScene) geometry() (*image.RGBA, [][]r3.Vec) {
 		}
 		b := j.boards[p.Src]
 		pl := j.placeOf(p, s.mirror)
-		if g := b.copper[s.side]; g != nil {
+		g := b.copper[s.side]
+		if g == nil { // a one sided board: the copper it has
+			g = b.copper[lyTop]
+			if g == nil {
+				g = b.copper[lyBottom]
+			}
+		}
+		if g != nil {
 			for _, sh := range g.shapes {
 				t := shape{dark: sh.dark, R: sh.R}
 				if sh.R > 0 {
