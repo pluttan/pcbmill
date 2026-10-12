@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 )
 
 type Machine interface {
@@ -40,15 +41,20 @@ type Scanner struct {
 	StepFine   float64
 	FeedCoarse float64
 	FeedFine   float64
-	FeedNear   float64 // the long approach move: its depth is fixed by the target, speed only sets the wait
-	Margin     float64 // approach in one move to this much above the predicted copper
-	FineLimit  float64 // fine steps below the approach before falling back to the coarse search
-	Predict    bool    // Z is absolute (G90): a skipped command cannot shift the count, so one long approach move is safe
-	Stuck      int     // points touched again after a contact that would not open
-	Far        int     // the first points are far apart (the corners): travel high, full search, no "higher" check
-	floor      float64
-	hasFloor   bool
-	Log        func(string)
+	FeedNear   float64      // the long approach move: its depth is fixed by the target, speed only sets the wait
+	Margin     float64      // approach in one move to this much above the predicted copper
+	FineLimit  float64      // fine steps below the approach before falling back to the coarse search
+	Predict    bool         // Z is absolute (G90): a skipped command cannot shift the count, so one long approach move is safe
+	Stuck      int          // points touched again after a contact that would not open
+	Skipped    [][2]float64 // points the operator let go after failed tries
+	// Ask: a point failed pointTries times; askRetry, askSkip or askStop.
+	// nil: the error ends the scan.
+	Ask      func(i int, p [2]float64, err error, canSkip bool) int
+	start    float64 // Z where the scan began
+	Far      int     // the first points are far apart (the corners): travel high, full search, no "higher" check
+	floor    float64
+	hasFloor bool
+	Log      func(string)
 }
 
 func NewScanner(m Machine, t Touch) *Scanner {
@@ -343,67 +349,128 @@ type Point struct{ X, Y, Z float64 }
 
 // Grid touches every point; out gets each row as soon as it is measured.
 func (s *Scanner) Grid(pts [][2]float64, out func(Point)) ([]Point, error) {
-	zClear := s.z()
-	s.floor, s.hasFloor = zClear-s.Search-1, true
+	s.start = s.z()
+	s.floor, s.hasFloor = s.start-s.Search-1, true
 	var rows []Point
 	for i, p := range pts {
-		if len(rows) > 0 {
-			// travel just above the copper here and at the nearest measured point: a short
-			// lift means few search steps, and a skipped lift still shows on the first step
-			near, last := rows[0], rows[len(rows)-1]
-			for _, r := range rows {
-				if math.Hypot(r.X-p[0], r.Y-p[1]) < math.Hypot(near.X-p[0], near.Y-p[1]) {
-					near = r
+		z, err := s.point(i, p, rows)
+		skip := false
+		for tries := 1; err != nil; tries++ {
+			var se ScanError
+			if !errors.As(err, &se) || strings.Contains(err.Error(), "остановлено") || s.T.Alive() != nil {
+				return rows, err // the operator, or the MCU gone for good: not a move more
+			}
+			s.Log(fmt.Sprintf("точка %d не снята (%d): %v", i+1, tries, err))
+			if e := s.recover(rows); e != nil {
+				return rows, e
+			}
+			if tries >= pointTries {
+				if s.Ask == nil {
+					return rows, err
+				}
+				switch s.Ask(i, p, err, len(rows) > 0) {
+				case askRetry:
+					tries = 0
+				case askSkip:
+					skip = true
+				default:
+					return rows, err
 				}
 			}
-			zClear = math.Max(near.Z, last.Z) + s.Clear
-			if i < s.Far { // across the whole blank: it may rise more than a lift
-				hi := rows[0].Z
-				for _, r := range rows {
-					hi = math.Max(hi, r.Z)
-				}
-				zClear = hi + farLift
+			if skip {
+				break
 			}
+			z, err = s.point(i, p, rows)
 		}
-		var z float64
-		var err error
-		if len(rows) == 0 || !s.Predict || i < s.Far {
-			z, err = s.TouchAt(p[0], p[1], zClear)
-		} else {
-			pred := predict(rows, p[0], p[1])
-			zClear = math.Max(zClear, pred+s.Margin+s.Clear/2)
-			z, err = s.TouchNear(p[0], p[1], zClear, pred)
+		if skip {
+			s.Skipped = append(s.Skipped, p)
+			continue
 		}
-		if err != nil {
-			return rows, err
-		}
-		hi, lo := z, z
+		lo := z
 		for _, r := range rows {
-			hi, lo = math.Max(hi, r.Z), math.Min(lo, r.Z)
-		}
-		if len(rows) > 0 && i >= s.Far {
-			prevHi := rows[0].Z
-			for _, r := range rows {
-				prevHi = math.Max(prevHi, r.Z)
-			}
-			if z > prevHi+s.Clear*0.6 {
-				// copper right under the lift height: a lift was skipped and the count is off
-				return rows, fail("в X%.2f Y%.2f медь на %.3f мм выше всех прежних точек: похоже, станок "+
-					"пропустил команду. Увеличьте паузу (settle)", p[0], p[1], z-prevHi)
-			}
+			lo = math.Min(lo, r.Z)
 		}
 		r := Point{p[0], p[1], z}
 		rows = append(rows, r)
 		if out != nil {
 			out(r)
 		}
-		_ = hi
 		// a clip fallen off the copper reads as "no contact": with the copper level known,
 		// going far below it can only mean digging into the board
 		s.floor = lo - s.Below
 		s.Log(fmt.Sprintf("%3d/%d  X%7.2f Y%7.2f  Z%8.4f", i+1, len(pts), p[0], p[1], z))
 	}
 	return rows, nil
+}
+
+// pointTries: a point is touched this many times before the operator is asked.
+const pointTries = 3
+
+// Answers of Ask.
+const (
+	askStop = iota
+	askRetry
+	askSkip
+)
+
+// recover: after a failed point, up and clear of the copper before the next try.
+func (s *Scanner) recover(rows []Point) error {
+	hi := s.start - farLift
+	for _, r := range rows {
+		hi = math.Max(hi, r.Z)
+	}
+	if up := hi + farLift; s.z() < up {
+		return s.M.RapidZ(up)
+	}
+	return nil
+}
+
+// point: one touch at p, the way its place in the order wants.
+func (s *Scanner) point(i int, p [2]float64, rows []Point) (float64, error) {
+	zClear := s.start
+	if len(rows) > 0 {
+		// travel just above the copper here and at the nearest measured point: a short
+		// lift means few search steps, and a skipped lift still shows on the first step
+		near, last := rows[0], rows[len(rows)-1]
+		for _, r := range rows {
+			if math.Hypot(r.X-p[0], r.Y-p[1]) < math.Hypot(near.X-p[0], near.Y-p[1]) {
+				near = r
+			}
+		}
+		zClear = math.Max(near.Z, last.Z) + s.Clear
+		if i < s.Far { // across the whole blank: it may rise more than a lift
+			hi := rows[0].Z
+			for _, r := range rows {
+				hi = math.Max(hi, r.Z)
+			}
+			zClear = hi + farLift
+		}
+		zClear = math.Max(zClear, math.Min(s.z(), zClear+farLift)) // after a recover: no dive first
+	}
+	var z float64
+	var err error
+	if len(rows) == 0 || !s.Predict || i < s.Far {
+		z, err = s.TouchAt(p[0], p[1], zClear)
+	} else {
+		pred := predict(rows, p[0], p[1])
+		zClear = math.Max(zClear, pred+s.Margin+s.Clear/2)
+		z, err = s.TouchNear(p[0], p[1], zClear, pred)
+	}
+	if err != nil {
+		return 0, err
+	}
+	if len(rows) > 0 && i >= s.Far {
+		prevHi := rows[0].Z
+		for _, r := range rows {
+			prevHi = math.Max(prevHi, r.Z)
+		}
+		if z > prevHi+s.Clear*0.6 {
+			// copper right under the lift height: a lift was skipped and the count is off
+			return 0, fail("в X%.2f Y%.2f медь на %.3f мм выше всех прежних точек: похоже, станок "+
+				"пропустил команду", p[0], p[1], z-prevHi)
+		}
+	}
+	return z, nil
 }
 
 // Recheck touches the first point again after the scan: anything but zero is how

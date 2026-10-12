@@ -95,6 +95,26 @@ func scanRun(o opts, title string, pts [][2]float64, out string, j *Job, mirror 
 	}
 	s := newScanner(o, escStop{nc, p}, newReTouch(m, o.port, p))
 	s.Predict = true // nc.Abs above
+	s.Ask = func(i int, pt [2]float64, err error, canSkip bool) int {
+		machineBusy(false)
+		defer func() { machineBusy(true); nc.Grab() }()
+		h := scanHelp(err, i < 2, "")
+		h.todo = nil // the answer is the buttons below
+		text := append([]string{fmt.Sprintf("Точка %d (X %.1f Y %.1f) не снялась за %d попытки, фреза поднята.",
+			i+1, pt[0], pt[1], pointTries)}, h.lines()...)
+		btns := []string{"Повторить точку", "Пропустить точку", "Стоп"}
+		if !canSkip { // the first point is the zero of the map
+			btns = []string{"Повторить точку", "Стоп"}
+		}
+		d := &dialog{title: "Обход ждёт", text: text, buttons: btns, cancel: len(btns) - 1, kind: dlgStop}
+		switch btns[d.show()] {
+		case "Повторить точку":
+			return askRetry
+		case "Пропустить точку":
+			return askSkip
+		}
+		return askStop
+	}
 	if len(pts) > 5 {
 		s.Far = 5 // the zero and the corners first (cornersFirst)
 	}
@@ -173,29 +193,40 @@ func scanRun(o opts, title string, pts [][2]float64, out string, j *Job, mirror 
 	p.set(func() {
 		p.progText = "Повторное касание первой точки: насколько всё уехало за время обхода..."
 	})
-	drift, err := s.Recheck(rows)
-	if err != nil {
-		return nil, fmt.Errorf("повторное касание не удалось, карте верить нельзя: %v", err)
+	var drift float64
+	for try := 1; try <= pointTries; try++ { // the map is kept whatever this says
+		if drift, err = s.Recheck(rows); err == nil {
+			break
+		}
+		s.Log(fmt.Sprintf("повторное касание первой точки не удалось (%d): %v", try, err))
+		s.recover(rows)
 	}
 	machineBusy(false)
-	fmt.Fprintf(f, "# повторное касание первой точки: сдвиг %+.4f мм\n", drift)
 	hm, _ := MapFromPoints(rows)
-	info := []string{fmt.Sprintf("Сдвиг первой точки за обход: %+.3f мм", drift)}
+	var info []string
+	if err != nil {
+		info = append(info, "▲ Повторное касание первой точки не удалось: уход оси Z за обход не проверен. "+
+			"Перед резом сделайте Z0 и посмотрите на первый проход.")
+		drift = 0
+	} else {
+		fmt.Fprintf(f, "# повторное касание первой точки: сдвиг %+.4f мм\n", drift)
+		info = append(info, fmt.Sprintf("Сдвиг первой точки за обход: %+.3f мм", drift))
+	}
+	if len(s.Skipped) > 0 {
+		info = append(info, fmt.Sprintf("▲ Пропущено точек: %d. Высота в них взята по соседним точкам.", len(s.Skipped)))
+	}
 	if s.Stuck > 0 {
 		info = append(info, fmt.Sprintf("▲ Контакт не размыкался после подъёма %d раз: фреза поднималась выше, точки сняты заново. "+
 			"Если таких много, проверьте провод касания и Wi-Fi щупа.", s.Stuck))
 	}
 	if math.Abs(drift) > 0.03 {
 		info = append(info, "▲ ВНИМАНИЕ: больше 0.03 мм. Ось Z уходит во время работы или станок "+
-			"пропускает команды: по этой карте резать нельзя. Проверьте механику Z и повторите.")
-	} else {
+			"пропускает команды. Карта записана, но лучше проверьте механику Z и снимите её заново.")
+	} else if err == nil {
 		info = append(info, "√ Сдвиг в норме, карте можно верить.")
 	}
 	info = append(info, "√ Карта записана: "+filepath.Base(out))
 	mapResult(title+": готово", hm, rows, j, mirror, info)
-	if math.Abs(drift) > 0.03 {
-		return nil, fmt.Errorf("сдвиг первой точки %+.3f мм: карта не годится, снимите заново", drift)
-	}
 	return hm, nil
 }
 

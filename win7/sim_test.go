@@ -90,7 +90,7 @@ func TestSimFaults(t *testing.T) {
 		{fDead, 2, "МК не отвечает"},
 		{fClip, 2, "медь не найдена"},
 		{fShort, 2, "контакт"},
-		{fNoise, 0, "касание"},
+		{fNoise, 0, "онтакт"}, // the tries end on "контакт до переезда" or "касание ... контакт"
 	} {
 		sm, _, s := liveSim(400)
 		if c.after == 0 {

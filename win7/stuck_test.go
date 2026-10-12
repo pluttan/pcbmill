@@ -50,3 +50,38 @@ func TestStuckContact(t *testing.T) {
 		}
 	}
 }
+
+// TestAskRetry: the clip falls off after two points; the scan does not end:
+// three tries, then the operator puts it back and says retry, and the map is
+// whole. A point let go is left out, the rest goes on.
+func TestAskRetry(t *testing.T) {
+	g := GridFor(0.63, 61.26, 1.8, 46.05, 10)
+	for _, answer := range []int{askRetry, askSkip} {
+		sm, _, s := liveSim(400)
+		asked := 0
+		s.Ask = func(i int, p [2]float64, err error, canSkip bool) int {
+			asked++
+			sm.Toggle(fClip) // the clip back on the copper
+			return answer
+		}
+		n := 0
+		rows, err := s.Grid(g.Points(), func(Point) {
+			if n++; n == 2 {
+				sm.Toggle(fClip)
+			}
+		})
+		if err != nil {
+			t.Fatalf("ответ %d: %v", answer, err)
+		}
+		want := len(g.Points())
+		if answer == askSkip {
+			want--
+		}
+		if asked != 1 || len(rows) != want || len(s.Skipped) != len(g.Points())-want {
+			t.Errorf("ответ %d: спросили %d раз, точек %d из %d, пропущено %d", answer, asked, len(rows), want, len(s.Skipped))
+		}
+		if sm.maxDig > 0.36 {
+			t.Errorf("ответ %d: фреза ушла в медь на %.3f", answer, sm.maxDig)
+		}
+	}
+}
