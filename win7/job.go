@@ -52,7 +52,20 @@ const jobFile = "job.txt"
 
 // zero: where Z0 is touched after every change of tool, on bare copper in
 // the corner of the sheet, outside every board: the mask never covers it.
-func (j *Job) zero() pt { return pt{j.Margin / 2, j.Margin / 2} }
+// zero: the touch for Z0, in the middle of the margin; with no margin (a
+// board as big as the blank) 2 mm in from the corner, on the board's copper.
+func (j *Job) zero() pt {
+	d := math.Max(j.Margin/2, zeroInset)
+	return pt{d, d}
+}
+
+const zeroInset = 2.0
+
+// fillsSheet: one board lies over the whole blank: nothing to break off.
+func (j *Job) fillsSheet(mirror bool) bool {
+	u := j.used(mirror)
+	return len(j.Places) == 1 && u.X0 < 0.5 && u.Y0 < 0.5 && u.X1 > j.W-0.5 && u.Y1 > j.H-0.5
+}
 
 // probeBox: the place of a machine probe on the sheet.
 type probeBox struct {
@@ -628,6 +641,15 @@ func (j *Job) cam(c camCfg, say func(string)) ([]*camOp, error) {
 		}
 		merged[op.file] = op
 		keys = append(keys, op.file)
+	}
+	if merged["4_vcut"] != nil && j.fillsSheet(mirror) { // its edges are the edges of the blank
+		delete(merged, "4_vcut")
+		for i, k := range keys {
+			if k == "4_vcut" {
+				keys = append(keys[:i], keys[i+1:]...)
+				break
+			}
+		}
 	}
 	if m := merged["4_vcut"]; m != nil { // the sides on to the edge: the board breaks straight
 		ext := j.vcutReach(mirror, c)
