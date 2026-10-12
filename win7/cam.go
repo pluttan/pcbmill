@@ -230,6 +230,8 @@ func thinLoop(l []pt) bool {
 }
 
 // halfLoop: a closed ring cut at its farthest point from the start, one side.
+// A sliver that branches (a T or a Y of gaps) has no side that runs along
+// all of it: then nil, and the whole ring is cut.
 func halfLoop(l []pt) []pt {
 	far, fd := 0, -1.0
 	for i, q := range l {
@@ -237,7 +239,23 @@ func halfLoop(l []pt) []pt {
 			far, fd = i, d
 		}
 	}
-	return append([]pt(nil), l[:far+1]...)
+	h := l[:far+1]
+	cell := func(q pt) [2]int { return [2]int{int(math.Floor(q.X / isoThin)), int(math.Floor(q.Y / isoThin))} }
+	near := map[[2]int]bool{}
+	for _, q := range h {
+		c := cell(q)
+		for dx := -2; dx <= 2; dx++ {
+			for dy := -2; dy <= 2; dy++ {
+				near[[2]int{c[0] + dx, c[1] + dy}] = true
+			}
+		}
+	}
+	for _, q := range l[far:] {
+		if !near[cell(q)] {
+			return nil // the other side goes where this one does not
+		}
+	}
+	return append([]pt(nil), h...)
 }
 
 func centroid(l []pt) pt {
@@ -386,8 +404,10 @@ func isolation(b *board, side string, c camCfg, field []uint16) (*camOp, []uint1
 				continue
 			}
 			if k == 0 && thinLoop(l) {
-				beads = append(beads, halfLoop(l))
-				continue
+				if h := halfLoop(l); h != nil {
+					beads = append(beads, h)
+					continue
+				}
 			}
 			if l = simplify(l, simpTol); len(l) < 3 {
 				continue

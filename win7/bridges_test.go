@@ -37,24 +37,47 @@ func isoBridges(g *gerber, op *camOp, w float64) []pt {
 			rem.bits[k] = 1 // the blank is copper all over: what the tool did not touch stays
 		}
 	}
-	islands := r.pieces()
-	left := rem.pieces()
-	owner := map[int]int{} // a piece of what is left -> the first island in it
-	var out []pt
-	seen := map[int]bool{}
-	for j := 0; j < r.h; j++ {
-		for i := 0; i < r.w; i++ {
+	// a piece of the gap the tool left that touches uncut copper of two
+	// islands joins them: its middle is the place of the bridge
+	gap := &raster{x0: r.x0, y0: r.y0, px: r.px, w: r.w, h: r.h, bits: make([]byte, len(r.bits))}
+	for k := range gap.bits {
+		if rem.bits[k] != 0 && r.bits[k] == 0 {
+			gap.bits[k] = 1
+		}
+	}
+	islands, gaps := r.pieces(), gap.pieces()
+	type touch struct {
+		isl    map[int]bool
+		sx, sy float64
+		n      int
+	}
+	by := map[int]*touch{}
+	var order []int
+	for j := 1; j < r.h-1; j++ {
+		for i := 1; i < r.w-1; i++ {
 			k := j*r.w + i
-			if r.bits[k] == 0 || rem.bits[k] == 0 {
+			if gap.bits[k] == 0 {
 				continue
 			}
-			isl, piece := islands.label(i, j), left.label(i, j)
-			if o, ok := owner[piece]; !ok {
-				owner[piece] = isl
-			} else if o != isl && !seen[piece] {
-				seen[piece] = true
-				out = append(out, r.world(float64(i), float64(j)))
+			g := gaps.label(i, j)
+			t := by[g]
+			if t == nil {
+				t = &touch{isl: map[int]bool{}}
+				by[g] = t
+				order = append(order, g)
 			}
+			t.sx, t.sy, t.n = t.sx+float64(i), t.sy+float64(j), t.n+1
+			for _, d := range [][2]int{{1, 0}, {-1, 0}, {0, 1}, {0, -1}} {
+				if n := (j+d[1])*r.w + i + d[0]; r.bits[n] != 0 && rem.bits[n] != 0 {
+					t.isl[islands.label(i+d[0], j+d[1])] = true
+				}
+			}
+		}
+	}
+	var out []pt
+	for _, g := range order {
+		if t := by[g]; len(t.isl) > 1 {
+			out = append(out, r.world(t.sx/float64(t.n), t.sy/float64(t.n)))
 		}
 	}
 	return out
