@@ -78,7 +78,8 @@ func TestIsoLikePython(t *testing.T) {
 				l += math.Hypot(p.pts[i].X-p.pts[i-1].X, p.pts[i].Y-p.pts[i-1].Y)
 			}
 		}
-		if math.Abs(l-want[0])/want[0] > 0.005 || len(op.marks) != int(want[2]) {
+		// 1%: pcbscan drops the crumbs of the second pass shorter than isoCrumb
+		if math.Abs(l-want[0])/want[0] > 0.01 || len(op.marks) != int(want[2]) {
 			t.Errorf("%s: рез %.1f мм, мест %d; у pcbmill %.1f мм, мест %.0f", name, l, len(op.marks), want[0], want[2])
 		}
 	}

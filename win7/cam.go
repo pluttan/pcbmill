@@ -200,6 +200,115 @@ func placeOp(op *camOp, pls []place) *camOp {
 // ===  Isolation         ===
 // ==========================
 
+// isoCrumb: a piece of a later isolation pass shorter than this is dropped.
+const isoCrumb = 1.0
+
+// isoBead: a ring of the first pass shorter than this is a bead of a gap
+// as wide as the cut; beads closer than isoBeadGap are one gap. Two gaps
+// are at least a 0.2 mm track apart, their middles 0.4 mm. A longer ring
+// enclosing almost nothing (area over length under isoThin) is a sliver of
+// such a gap: one side of it is the cut.
+const (
+	isoBead    = 0.3
+	isoBeadGap = 0.35
+	isoThin    = 0.03
+)
+
+func thinLoop(l []pt) bool {
+	a := 0.0
+	for i := 1; i < len(l); i++ {
+		a += l[i-1].X*l[i].Y - l[i].X*l[i-1].Y
+	}
+	return math.Abs(a)/2/pathLen(l) < isoThin
+}
+
+// halfLoop: a closed ring cut at its farthest point from the start, one side.
+func halfLoop(l []pt) []pt {
+	far, fd := 0, -1.0
+	for i, q := range l {
+		if d := math.Hypot(q.X-l[0].X, q.Y-l[0].Y); d > fd {
+			far, fd = i, d
+		}
+	}
+	return append([]pt(nil), l[:far+1]...)
+}
+
+func centroid(l []pt) pt {
+	var c pt
+	for _, q := range l {
+		c.X += q.X
+		c.Y += q.Y
+	}
+	return pt{c.X / float64(len(l)), c.Y / float64(len(l))}
+}
+
+// chainBeads joins pieces into lines: from an end of a line, always on to
+// the nearest end of a piece left within gap (turned round when needed).
+func chainBeads(ps [][]pt, gap float64) [][]pt {
+	cell := func(q pt) [2]int { return [2]int{int(math.Floor(q.X / gap)), int(math.Floor(q.Y / gap))} }
+	type end struct{ i, at int } // piece, 0: its start, 1: its end
+	grid := map[[2]int][]end{}
+	for i, p := range ps {
+		grid[cell(p[0])] = append(grid[cell(p[0])], end{i, 0})
+		grid[cell(p[len(p)-1])] = append(grid[cell(p[len(p)-1])], end{i, 1})
+	}
+	used := make([]bool, len(ps))
+	near := func(q pt) (end, bool) {
+		c, best, bd, ok := cell(q), end{}, gap*gap, false
+		for dx := -1; dx <= 1; dx++ {
+			for dy := -1; dy <= 1; dy++ {
+				for _, e := range grid[[2]int{c[0] + dx, c[1] + dy}] {
+					p := ps[e.i][0]
+					if e.at == 1 {
+						p = ps[e.i][len(ps[e.i])-1]
+					}
+					if d := (p.X-q.X)*(p.X-q.X) + (p.Y-q.Y)*(p.Y-q.Y); !used[e.i] && d <= bd {
+						best, bd, ok = e, d, true
+					}
+				}
+			}
+		}
+		return best, ok
+	}
+	grow := func(line []pt) []pt {
+		for {
+			e, ok := near(line[len(line)-1])
+			if !ok {
+				return line
+			}
+			used[e.i] = true
+			p := ps[e.i]
+			if e.at == 1 {
+				for k := len(p) - 1; k >= 0; k-- {
+					line = append(line, p[k])
+				}
+			} else {
+				line = append(line, p...)
+			}
+		}
+	}
+	reverse := func(l []pt) {
+		for a, b := 0, len(l)-1; a < b; a, b = a+1, b-1 {
+			l[a], l[b] = l[b], l[a]
+		}
+	}
+	var out [][]pt
+	for i := range ps {
+		if used[i] {
+			continue
+		}
+		used[i] = true
+		line := grow(append([]pt(nil), ps[i]...))
+		reverse(line) // and on from the other end
+		line = grow(line)
+		if len(line) > 2 {
+			line = simplify(line, simpTol)
+		}
+		out = append(out, line)
+	}
+	return out
+}
+
 // boardMask: the pixels inside the outline, nil when the outline is open.
 func boardMask(b *board, r *raster) *raster {
 	if !b.closed {
@@ -248,15 +357,44 @@ func isolation(b *board, side string, c camCfg, field []uint16) (*camOp, []uint1
 	for k := 0; k < c.Passes; k++ {
 		ts = append(ts, ((w/2+float64(k)*step)/r.px+0.5)*distScale)
 	}
+	// The first pass is kept whole: it is what parts the copper. A later pass
+	// in a gap only a little wider than the first one breaks into crumbs a
+	// pixel long; each costs a lift and a plunge and cuts nothing that
+	// matters (the first pass has parted the copper there already).
+	// A gap hardly wider than the cut (0.2 mm on a diagonal) leaves the tool
+	// centre a band thinner than a pixel; its level line falls apart into
+	// tiny rings along the gap. Their middles, joined, are the centre line
+	// of the gap: one cut instead of a lift and a plunge per ring.
 	var loops [][]pt
-	for _, l := range r.levelsLines(field, ts, false) {
-		if l = simplify(l, simpTol); len(l) >= 3 {
+	var beads [][]pt
+	crumbs := 0
+	for k, t := range ts {
+		for _, l := range r.levelLines(field, t, false) {
+			if k == 0 && pathLen(l) < isoBead {
+				beads = append(beads, []pt{centroid(l)})
+				continue
+			}
+			if k == 0 && thinLoop(l) {
+				beads = append(beads, halfLoop(l))
+				continue
+			}
+			if l = simplify(l, simpTol); len(l) < 3 {
+				continue
+			}
+			if k > 0 && pathLen(l) < isoCrumb {
+				crumbs++
+				continue
+			}
 			loops = append(loops, l)
 		}
 	}
+	loops = append(loops, chainBeads(beads, isoBeadGap)...)
 	op.paths = rawPaths(loops, -c.IsoDepth)
 	op.notes = append(op.notes, fmt.Sprintf("ширина реза %.3f мм на глубине %.2f, обходов %d, полоса %.2f мм",
 		w, c.IsoDepth, c.Passes, w+step*float64(c.Passes-1)))
+	if crumbs > 0 {
+		op.notes = append(op.notes, fmt.Sprintf("обрывков второго обхода короче %s мм пропущено: %d", num(isoCrumb), crumbs))
+	}
 	// shorts: closing \ copper, the pieces of it touching two islands
 	if limited {
 		field = r.distTo(1, field) // the board limit off again: a short at the edge is a short too
@@ -867,7 +1005,7 @@ func camBoard(b *board, c camCfg, say func(string)) []*camOp {
 		op, field = maskOpen(b, mask, c, field)
 		op.tool = vbit
 		if c.MaskFlat > 0 {
-			op.tool = "плоская фреза " + num(c.MaskFlat)
+			op.tool = "фреза " + num(c.MaskFlat) + " мм" // the same words as the holes: one tool, no new Z0
 		}
 		ops = append(ops, op)
 	}
