@@ -5,6 +5,7 @@ package main
 // Z is never read from the machine: every Z move is relative and summed here.
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -43,6 +44,8 @@ type Scanner struct {
 	Margin     float64 // approach in one move to this much above the predicted copper
 	FineLimit  float64 // fine steps below the approach before falling back to the coarse search
 	Predict    bool    // Z is absolute (G90): a skipped command cannot shift the count, so one long approach move is safe
+	Stuck      int     // points touched again after a contact that would not open
+	Far        int     // the first points are far apart (the corners): travel high, full search, no "higher" check
 	floor      float64
 	hasFloor   bool
 	Log        func(string)
@@ -110,11 +113,54 @@ func (s *Scanner) liftUntilOpenN(z, step float64, n int) error {
 			return nil
 		}
 	}
-	return fail("контакт не размыкается после подъёма на %.2f мм: зажим замкнут на фрезу?", step*float64(n))
+	return s.liftFar(z)
 }
 
-// TouchAt finds the copper under (x, y) and returns its Z.
+// farLift: the travel height over the highest copper so far between the
+// corners: a blank tilted 0.5 mm across still passes under it.
+const farLift = 1.0
+
+// stuckLift: how high the tool goes when the contact will not open.
+const stuckLift = 2.0
+
+// errStuck: the contact opened only well above the copper: the touch is not
+// to be trusted, the point is measured again from there.
+var errStuck = ScanError{"контакт разомкнулся только высоко над медью"}
+
+// liftFar: the contact stays closed after the usual lift (the tip stuck in
+// the copper, a burr, a twitch of the wire): up in 0.1 mm steps to stuckLift
+// over z. Open on the way: errStuck, the point is touched again.
+func (s *Scanner) liftFar(z float64) error {
+	for h := 0.1; h <= stuckLift+1e-9; h += 0.1 {
+		if s.z() >= z+h {
+			continue
+		}
+		if err := s.M.MoveZ(z+h, s.FeedCoarse); err != nil {
+			return err
+		}
+		if err := s.T.Alive(); err != nil {
+			return err
+		}
+		if !s.T.State() {
+			s.Stuck++
+			s.Log(fmt.Sprintf("контакт разомкнулся на %.1f мм над точкой касания: снимаю точку заново", h))
+			return errStuck
+		}
+	}
+	return fail("контакт не размыкается и на %.1f мм над медью: провод касания замкнут на фрезу или на раму", stuckLift)
+}
+
+// TouchAt finds the copper under (x, y) and returns its Z; a contact that
+// stuck gets one more try from where it opened.
 func (s *Scanner) TouchAt(x, y, zClear float64) (float64, error) {
+	z, err := s.touchAt(x, y, zClear)
+	if errors.Is(err, errStuck) {
+		return s.touchAt(x, y, s.z())
+	}
+	return z, err
+}
+
+func (s *Scanner) touchAt(x, y, zClear float64) (float64, error) {
 	if s.T.State() {
 		return 0, fail("контакт до переезда: фрезу не подняло или провод замкнут")
 	}
@@ -157,6 +203,14 @@ func (s *Scanner) TouchAt(x, y, zClear float64) (float64, error) {
 // above the prediction is met during that move and costs at most Margin of
 // pressing; copper well below it falls back to the ordinary coarse search.
 func (s *Scanner) TouchNear(x, y, zClear, pred float64) (float64, error) {
+	z, err := s.touchNear(x, y, zClear, pred)
+	if errors.Is(err, errStuck) {
+		return s.touchAt(x, y, s.z())
+	}
+	return z, err
+}
+
+func (s *Scanner) touchNear(x, y, zClear, pred float64) (float64, error) {
 	if s.T.State() {
 		return 0, fail("контакт до переезда: фрезу не подняло или провод замкнут")
 	}
@@ -217,8 +271,7 @@ func (s *Scanner) TouchNear(x, y, zClear, pred float64) (float64, error) {
 		return 0, err
 	}
 	if s.T.State() {
-		return 0, fail("контакт не размыкается после подъёма на %.2f мм: подъём пропущен "+
-			"или зажим замкнут на фрезу", s.Clear)
+		return 0, s.liftFar(zf)
 	}
 	return zf, nil
 }
@@ -304,10 +357,17 @@ func (s *Scanner) Grid(pts [][2]float64, out func(Point)) ([]Point, error) {
 				}
 			}
 			zClear = math.Max(near.Z, last.Z) + s.Clear
+			if i < s.Far { // across the whole blank: it may rise more than a lift
+				hi := rows[0].Z
+				for _, r := range rows {
+					hi = math.Max(hi, r.Z)
+				}
+				zClear = hi + farLift
+			}
 		}
 		var z float64
 		var err error
-		if len(rows) == 0 || !s.Predict {
+		if len(rows) == 0 || !s.Predict || i < s.Far {
 			z, err = s.TouchAt(p[0], p[1], zClear)
 		} else {
 			pred := predict(rows, p[0], p[1])
@@ -321,7 +381,7 @@ func (s *Scanner) Grid(pts [][2]float64, out func(Point)) ([]Point, error) {
 		for _, r := range rows {
 			hi, lo = math.Max(hi, r.Z), math.Min(lo, r.Z)
 		}
-		if len(rows) > 0 {
+		if len(rows) > 0 && i >= s.Far {
 			prevHi := rows[0].Z
 			for _, r := range rows {
 				prevHi = math.Max(prevHi, r.Z)

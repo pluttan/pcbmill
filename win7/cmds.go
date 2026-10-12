@@ -151,7 +151,7 @@ func zeroAt(o opts, title string, at [2]float64, why string) error {
 	}
 	p.buttons(pageBtn{id: "cancel", label: "Отмена", kind: ui.BtnDanger, key: ui.KeyEsc})
 	defer p.buttons()
-	s := newScanner(o, zeroStop{nc, p}, m)
+	s := newScanner(o, zeroStop{nc, p}, newReTouch(m, o.port, p))
 	s.Search = zeroSearch
 	s.StepCoarse = 0.05 // the thin tip: small steps, the fine touch follows
 	_, _, z0 := nc.Pos()

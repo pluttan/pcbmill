@@ -48,7 +48,7 @@ func jobMain(o opts) {
 		act := <-mainActs
 		inboxBusy.Store(true) // the probe is the work's now
 		if err := act(); err != nil && !errors.Is(err, errBack) {
-			alert(err)
+			showErr(err)
 		}
 		inboxBusy.Store(false)
 		u.gen++

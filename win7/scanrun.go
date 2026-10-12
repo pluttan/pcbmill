@@ -58,6 +58,7 @@ func scanRun(o opts, title string, pts [][2]float64, out string, j *Job, mirror 
 	if err != nil {
 		return nil, err
 	}
+	pts = cornersFirst(pts) // a wrong zero or a loose wire shows in five points
 	sc := newSheetScene(j, mirror, sheetOverlay{points: pts})
 	sc.tool = true
 	p.set(func() {
@@ -92,8 +93,11 @@ func scanRun(o opts, title string, pts [][2]float64, out string, j *Job, mirror 
 	if err := nc.Grab(); err != nil {
 		return nil, err
 	}
-	s := newScanner(o, escStop{nc, p}, m)
+	s := newScanner(o, escStop{nc, p}, newReTouch(m, o.port, p))
 	s.Predict = true // nc.Abs above
+	if len(pts) > 5 {
+		s.Far = 5 // the zero and the corners first (cornersFirst)
+	}
 	start := time.Now()
 	p.set(func() {
 		p.head, p.info = "Обход", []string{"Мышь и клавиатуру не трогать: pcbscan печатает в NcStudio.",
@@ -122,9 +126,28 @@ func scanRun(o opts, title string, pts [][2]float64, out string, j *Job, mirror 
 	defer stop()
 	stopFaults := faultKeysOn(func() bool { return true })
 	defer stopFaults()
+	var got []Point
+	cornersStop := false
 	rows, err := s.Grid(pts, func(pt Point) {
 		fmt.Fprintf(f, "%.3f,%.3f,%.4f\n", pt.X, pt.Y, pt.Z)
 		f.Sync()
+		got = append(got, pt)
+		if len(got) == 5 && len(pts) > 5 { // the zero and the four corners: a look before the rest
+			lines, odd := cornerReport(got)
+			machineBusy(false)
+			d := &dialog{title: "Углы сняты: продолжить обход?", text: append(lines, "",
+				fmt.Sprintf("Дальше ещё %d точек.", len(pts)-5)),
+				buttons: []string{"Продолжить обход", "Стоп"}, cancel: 1}
+			if odd {
+				d.sel = 1
+			}
+			if d.show() != 0 {
+				cornersStop = true
+				p.send("stop") // the scan stops before the next travel
+			}
+			machineBusy(true)
+			nc.Grab()
+		}
 		if len(sc.done) == 0 {
 			setCopperZ(pt.Z)
 		}
@@ -142,7 +165,10 @@ func scanRun(o opts, title string, pts [][2]float64, out string, j *Job, mirror 
 		if confirm(fmt.Sprintf("Поднять фрезу на %.1f мм?", o.clear), "NcStudio снова получит фокус.") && nc.Grab() == nil {
 			nc.RapidZ(nc.z + o.clear)
 		}
-		return nil, fmt.Errorf("карта не досняна: %v. В %s измеренные точки", err, filepath.Base(out))
+		if cornersStop {
+			return nil, nil
+		}
+		return nil, scanHelp(err, len(rows) <= 1, filepath.Base(out))
 	}
 	p.set(func() {
 		p.progText = "Повторное касание первой точки: насколько всё уехало за время обхода..."
@@ -155,6 +181,10 @@ func scanRun(o opts, title string, pts [][2]float64, out string, j *Job, mirror 
 	fmt.Fprintf(f, "# повторное касание первой точки: сдвиг %+.4f мм\n", drift)
 	hm, _ := MapFromPoints(rows)
 	info := []string{fmt.Sprintf("Сдвиг первой точки за обход: %+.3f мм", drift)}
+	if s.Stuck > 0 {
+		info = append(info, fmt.Sprintf("▲ Контакт не размыкался после подъёма %d раз: фреза поднималась выше, точки сняты заново. "+
+			"Если таких много, проверьте провод касания и Wi-Fi щупа.", s.Stuck))
+	}
 	if math.Abs(drift) > 0.03 {
 		info = append(info, "▲ ВНИМАНИЕ: больше 0.03 мм. Ось Z уходит во время работы или станок "+
 			"пропускает команды: по этой карте резать нельзя. Проверьте механику Z и повторите.")

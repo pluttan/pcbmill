@@ -90,7 +90,6 @@ func TestSimFaults(t *testing.T) {
 		{fDead, 2, "МК не отвечает"},
 		{fClip, 2, "медь не найдена"},
 		{fShort, 2, "контакт"},
-		{fSkip, 2, "подъём"},
 		{fNoise, 0, "касание"},
 	} {
 		sm, _, s := liveSim(400)
@@ -111,6 +110,28 @@ func TestSimFaults(t *testing.T) {
 			t.Errorf("%s: фреза ушла в медь на %.3f", simFaults[c.f].short, sm.maxDig)
 		}
 		t.Logf("%-13s после %2d точек: %v", simFaults[c.f].short, n, err)
+	}
+	// a skipped lift: the contact stays closed, the tool goes on up, the
+	// point is touched again; the map comes out right and the count says so
+	{
+		sm, _, s := liveSim(400)
+		n := 0
+		rows, err := s.Grid(g.Points(), func(Point) {
+			if n++; n == 2 {
+				sm.Toggle(fSkip)
+			}
+		})
+		if err != nil {
+			t.Fatalf("ПРОПУСК: %v", err)
+		}
+		worst := 0.0
+		for _, r := range rows {
+			worst = math.Max(worst, math.Abs((r.Z-rows[0].Z)-(simSurface(r.X, r.Y)-simSurface(rows[0].X, rows[0].Y))))
+		}
+		if worst > 0.011 || s.Stuck == 0 || sm.maxDig > 0.36 {
+			t.Errorf("ПРОПУСК: ошибка карты %.4f, точек заново %d, вдавливание %.3f", worst, s.Stuck, sm.maxDig)
+		}
+		t.Logf("ПРОПУСК: карта верна (%.4f), точек снято заново %d", worst, s.Stuck)
 	}
 	// the creeping axis passes the scan, the recheck shows it
 	sm, _, s := liveSim(400)
