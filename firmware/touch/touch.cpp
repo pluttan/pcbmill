@@ -15,6 +15,7 @@
 //   "F"      -> read the newest file: "FILE <bytes> <md5> <name>" or "NOFILE"
 //   "A" / "a" -> the Wi-Fi point on (for 10 idle minutes) / off; BOOT is "A"
 //   "W"      -> "WIFI up|down <ip> clients <n> power <q>": is the point there
+//   "U"      -> "UP <ms since start> <reset reason>": did the probe restart, and why
 //   "S"      -> a PowerShell 2.0 script that takes the newest file over $p;
 //               the first time, on the PC, one typed line runs it:
 //   $p=New-Object IO.Ports.SerialPort COM5,115200;$p.Open();$p.DiscardInBuffer();$p.Write('S');sleep 1;iex $p.ReadExisting()
@@ -354,6 +355,7 @@ void loop() {
     else if (c == 'S') Serial.print(RECV);
     else if (c == 'A') apOn();
     else if (c == 'a') apOff();
+    else if (c == 'U') Serial.printf("UP %lu %d\n", millis(), (int)esp_reset_reason());
     else if (c == 'W')
       Serial.printf("WIFI %s %s clients %d power %d\n", apUp ? "up" : "down", WiFi.softAPIP().toString().c_str(),
                     WiFi.softAPgetStationNum(), (int)WiFi.getTxPower());
