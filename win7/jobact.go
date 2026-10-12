@@ -230,6 +230,9 @@ func (j *Job) markCam(c camCfg) { os.WriteFile(j.camSigPath(), []byte(camSig(c))
 // with the same layout before a stage runs. The map and the marks stay.
 func (u *jobUI) freshProgs() error {
 	j := u.j
+	if u.changed() { // the programs on disk are of the boards before the change
+		return fmt.Errorf("платы или лист изменены, а программы старые: сначала Платы / Разложить и посчитать")
+	}
 	if b, err := os.ReadFile(j.camSigPath()); err == nil && string(b) == camSig(u.c) && !u.camDirty {
 		return nil
 	}
