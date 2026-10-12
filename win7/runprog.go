@@ -94,12 +94,24 @@ func jobMap(j *Job) (*HeightMap, error) {
 	return MapFromPoints(rows)
 }
 
+// throughHoles: a program of holes through the board; its depth has 0.3 mm
+// to spare, so a zero set by hand and no height map are enough. The spot
+// drill is shallow and keeps the touch.
+func throughHoles(file string) bool {
+	b := filepath.Base(strings.ReplaceAll(file, `\`, "/"))
+	return strings.HasPrefix(b, holesFile) || strings.HasPrefix(b, "3_drill_") && !strings.HasPrefix(b, "3_drill_spot")
+}
+
 // runProg runs one program of a stage; true when the operator said it is done.
 func runProg(o opts, j *Job, c camCfg, file, stage string) (bool, error) {
 	title := "задание / " + stage + " / " + filepath.Base(file)
+	through := throughHoles(file)
 	hm, err := jobMap(j)
-	if err != nil {
+	if err != nil && !through {
 		return false, err
+	}
+	if err != nil {
+		hm = nil // a hole goes through the board: no map is needed
 	}
 	lines, err := readLines(file)
 	if err != nil {
@@ -129,7 +141,23 @@ func runProg(o opts, j *Job, c camCfg, file, stage string) (bool, error) {
 			"Поставьте его, опустите не выше " + num(zeroSearch) + " мм над медью у " + corner + ".",
 			"Дальше касание и Z0 там."},
 			buttons: []string{"Поставил, Z0", "Отмена"}, sel: 0, cancel: 1}
-		if d.show() != 0 {
+		if through {
+			d.text = append(d.text, "", "Отверстия сквозные: Z0 можно выставить в NcStudio самому, по бумаге.")
+			d.buttons = []string{"Поставил, Z0", "Z0 выставлен сам", "Отмена"}
+			d.cancel = 2
+		}
+		switch d.show() {
+		case 0:
+		case 1:
+			if !through {
+				return false, nil
+			}
+			needZero = false
+			j.Done["_tool"] = tool
+			if err := j.save(); err != nil {
+				return false, err
+			}
+		default:
 			return false, nil
 		}
 	} else {
@@ -159,9 +187,11 @@ func runProg(o opts, j *Job, c camCfg, file, stage string) (bool, error) {
 		}
 	}
 	// the program over the map, next to it
-	out, err := ApplyMap(lines, hm, 1.0)
-	if err != nil {
-		return false, err
+	out := lines
+	if hm != nil {
+		if out, err = ApplyMap(lines, hm, 1.0); err != nil {
+			return false, err
+		}
 	}
 	dst := strings.TrimSuffix(file, ".tap") + "_level.tap"
 	if err := os.WriteFile(dst, []byte(strings.Join(out, "\r\n")+"\r\n"), 0644); err != nil {
