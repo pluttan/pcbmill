@@ -231,7 +231,7 @@ func TestRedo(t *testing.T) {
 	if err := j.writeProgs(ops); err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range []string{j.progPath("1_iso"), j.progPath("3_drill_1.0"), j.progPath("4_vcut")} {
+	for _, f := range []string{j.progPath("1_iso"), j.progPath(holesFile), j.progPath("4_vcut")} {
 		src, _ := readLines(f)
 		before, _ := readProg(src)
 		var c pt

@@ -80,7 +80,7 @@ func TestRenderTime(t *testing.T) {
 		defer func() { theme = nil }()
 	}
 	j, hm := renderJob(t)
-	for _, file := range []string{"1_iso", "1_iso_probe_depth", "3_drill_1.0", "4_vcut"} {
+	for _, file := range []string{"1_iso", "1_iso_probe_depth", holesFile, "4_vcut"} {
 		for _, ss := range []int{1, 2} {
 			s, f, cam := sheetFrame(t, j, hm, file, 1200*ss, 800*ss)
 			s.Render(f, cam, float64(ss)) // the copper texture is cached after this

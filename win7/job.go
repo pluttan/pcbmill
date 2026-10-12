@@ -623,6 +623,9 @@ func (j *Job) cam(c camCfg, say func(string)) ([]*camOp, error) {
 	if j.DrillProbe != nil && c.DrillMode != drillSpot {
 		op := drillTest(*j.DrillProbe, c)
 		op.tool = "сверло 1.0"
+		if c.HoleMill > 0 {
+			op.tool = holeTool(c)
+		}
 		merged[op.file] = op
 		keys = append(keys, op.file)
 	}

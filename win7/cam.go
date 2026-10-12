@@ -29,6 +29,10 @@ type camCfg struct {
 	DrillMode       int // drillThrough, drillSpot, drillBoth
 	Thickness       float64
 	DrillFeed       float64
+	HoleMill        int     // 1: every hole by one end mill, wider ones round a helix; 0: a drill per size
+	HoleTool        float64 // the end mill of the holes
+	HoleFeed        float64 // its feed round the helix
+	HoleStep        float64 // down per turn of the helix
 	VDepth, VStep   float64
 	VFeed           float64
 	Side            int // sideTop, sideBottom: the copper side milled, face up
@@ -49,6 +53,7 @@ const (
 func defaultCam() camCfg {
 	return camCfg{Tip: 0.1, Angle: 45, Spindle: 24000, IsoDepth: 0.1, Passes: 2, IsoFeed: 300, Plunge: 200,
 		MaskDepth: 0.03, MaskFeed: 200, MaskTest: true, DrillMode: drillThrough, Thickness: 1.5, DrillFeed: 60,
+		HoleMill: 1, HoleTool: 1.0, HoleFeed: 200, HoleStep: 0.2,
 		VDepth: 0.8, VStep: 0.2, VFeed: 200, Side: sideTop}
 }
 
@@ -595,6 +600,9 @@ func drilling(b *board, c camCfg) []*camOp {
 	if c.DrillMode == drillSpot {
 		return ops
 	}
+	if c.HoleMill > 0 {
+		return append(ops, holesByMill(b.holes, c))
+	}
 	sizes := map[float64][]hole{}
 	for _, h := range b.holes {
 		sizes[drillSize(h.D)] = append(sizes[drillSize(h.D)], h)
@@ -867,6 +875,9 @@ func camBoard(b *board, c camCfg, say func(string)) []*camOp {
 		op.tool = "сверло " + strings.TrimPrefix(op.file, "3_drill_")
 		if op.file == "3_drill_spot" {
 			op.tool = vbit
+		}
+		if op.file == holesFile {
+			op.tool = holeTool(c)
 		}
 		ops = append(ops, op)
 	}

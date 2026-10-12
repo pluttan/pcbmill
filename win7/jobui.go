@@ -310,6 +310,8 @@ func (u *jobUI) kids(i int) []jnode {
 			jnode{icon: "·", title: "Найти координаты NcStudio", act: func() error { return cmdFindCoords(o) }},
 			jnode{icon: "·", title: "Карман в жертвенной пластине", act: u.pocket,
 				about: []string{"Гнездо под заготовку фрезой 8 мм: угол гнезда в нуле листа."}},
+			jnode{icon: "·", title: "Засветка маски фонарём", act: u.uvLight,
+				about: []string{"УФ-фонарь на шпинделе змейкой по листу; шпиндель выключен, Z не двигается."}},
 			jnode{icon: "·", title: "Wi-Fi щупа на 10 минут", act: func() error { return cmdProbeWiFi(o) },
 				about: []string{"Точка pcbscan для передачи файлов с телефона или ноутбука."}},
 			jnode{icon: "·", title: "Перепрошить щуп", act: func() error { return cmdFlashProbe(o) },
