@@ -45,10 +45,43 @@ func findTouch(port string) (Touch, string, error) {
 		return simM, "эмуляция", nil
 	}
 	m, name, err := findMCU(port)
-	if err != nil {
-		return nil, "", err
+	if err == nil {
+		return m, name, nil
 	}
-	return m, name, nil
+	return waitMCU(port, err)
+}
+
+// waitMCU: the probe is not there at the start of a step (it dropped off USB
+// and Windows has not given the port back yet). The step waits for it once a
+// second instead of ending with the error; Отмена ends the wait.
+func waitMCU(port string, first error) (Touch, string, error) {
+	p := cur
+	if p == nil {
+		return nil, "", first
+	}
+	probeLog("не найден в начале шага: " + first.Error())
+	head, info, btns := p.head, p.info, p.btns
+	p.drain()
+	p.set(func() {
+		p.head = "Жду щуп"
+		p.info = []string{"Щуп не отвечает: " + first.Error(),
+			"Если ждать долго, выньте USB щупа и вставьте снова. Отмена завершает шаг."}
+		p.btns = []pageBtn{{id: "cancel", label: "Отмена", kind: ui.BtnDanger, key: ui.KeyEsc}}
+	})
+	backToApp()
+	start := time.Now()
+	for {
+		if id, ok := p.pressed(); ok && (id == "cancel" || id == "stop") {
+			p.set(func() { p.head, p.info, p.btns, p.progText = head, info, btns, "" })
+			return nil, "", fmt.Errorf("щуп не ответил за %.0f с: %v", time.Since(start).Seconds(), first)
+		}
+		time.Sleep(time.Second)
+		p.set(func() { p.progText = fmt.Sprintf("жду щуп: %.0f с", time.Since(start).Seconds()) })
+		if m, name, err := findMCU(port); err == nil {
+			p.set(func() { p.head, p.info, p.btns, p.progText = head, info, btns, "" })
+			return m, name, nil
+		}
+	}
 }
 
 // mcuAt says where the MCU is: "МК на COM5", or that it is the virtual one.

@@ -37,10 +37,11 @@ func wireBig(touching bool, hits int, since string) func(c *ui.Ctx, r image.Rect
 
 func cmdWire(o opts) error {
 	p := newPage(menuTitle("2"), "Ищу МК на COM-портах...")
-	m, name, err := findTouch(o.port)
+	mt, name, err := findTouch(o.port)
 	if err != nil {
 		return err
 	}
+	m := newReTouch(mt, o.port, p) // a drop waits for the probe, the check goes on
 	p.set(func() {
 		p.head = "Проверка провода"
 		p.info = []string{mcuAt(name) + ". Касайтесь зажимом фрезы: здесь должно загораться КОНТАКТ. Станок не двигается."}

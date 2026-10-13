@@ -120,8 +120,9 @@ func (m *MCU) Hits() int   { m.mu.Lock(); defer m.mu.Unlock(); return m.hits }
 func (m *MCU) Known() bool { m.mu.Lock(); defer m.mu.Unlock(); return m.known }
 
 var (
-	mcuCache *MCU
-	mcuName  string
+	mcuCache  *MCU
+	mcuName   string
+	mcuLostAt time.Time // the cached MCU was found dead; zero when it answers
 )
 
 func (m *MCU) Close() { m.port.Close() }
@@ -136,9 +137,15 @@ func findMCU(want string) (*MCU, string, error) {
 
 func findMCUlocked(want string) (*MCU, string, error) {
 	if mcuCache != nil {
-		if mcuCache.Alive() == nil {
+		err := mcuCache.Alive()
+		if err == nil {
 			return mcuCache, mcuName, nil
 		}
+		probeLogMu.Lock()
+		probeDrops++
+		probeLogMu.Unlock()
+		probeLog(fmt.Sprintf("оборвался (%s): %v", mcuName, err))
+		mcuLostAt = time.Now()
 		mcuCache.Close()
 		mcuCache = nil
 		time.Sleep(500 * time.Millisecond)
@@ -177,6 +184,10 @@ func findMCUlocked(want string) (*MCU, string, error) {
 		}
 		if m.Known() {
 			mcuCache, mcuName = m, name
+			if !mcuLostAt.IsZero() {
+				probeLog(backLine(m, name, time.Since(mcuLostAt)))
+				mcuLostAt = time.Time{}
+			}
 			return m, name, nil
 		}
 		m.Close()

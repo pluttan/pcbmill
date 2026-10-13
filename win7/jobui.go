@@ -312,6 +312,8 @@ func (u *jobUI) kids(i int) []jnode {
 				about: []string{"Гнездо под заготовку фрезой 8 мм: угол гнезда в нуле листа."}},
 			jnode{icon: "·", title: "Засветка маски фонарём", act: u.uvLight,
 				about: []string{"УФ-фонарь на шпинделе змейкой по листу; шпиндель выключен, Z не двигается."}},
+			jnode{icon: "·", title: "Проверка связи щупа", act: func() error { return cmdProbeLink(o) },
+				about: []string{"Держит порт щупа и считает обрывы USB. Журнал в " + probeLogFile + " рядом с pcbscan."}},
 			jnode{icon: "·", title: "Wi-Fi щупа на 10 минут", act: func() error { return cmdProbeWiFi(o) },
 				about: []string{"Точка pcbscan для передачи файлов с телефона или ноутбука."}},
 			jnode{icon: "·", title: "Перепрошить щуп", act: func() error { return cmdFlashProbe(o) },

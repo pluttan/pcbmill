@@ -16,6 +16,9 @@
 //   "A" / "a" -> the Wi-Fi point on (for 10 idle minutes) / off; BOOT is "A"
 //   "W"      -> "WIFI up|down <ip> clients <n> power <q>": is the point there
 //   "U"      -> "UP <ms since start> <reset reason>": did the probe restart, and why
+// A host that polled and went quiet for 3 s (Windows 7 marks the port "not
+// functioning" after a glitch on the cable) gets the probe replugged once:
+// D+ pull-up off for 0.3 s, as if the cable came out, and the port is back.
 //   "S"      -> a PowerShell 2.0 script that takes the newest file over $p;
 //               the first time, on the PC, one typed line runs it:
 //   $p=New-Object IO.Ports.SerialPort COM5,115200;$p.Open();$p.DiscardInBuffer();$p.Write('S');sleep 1;iex $p.ReadExisting()
@@ -45,6 +48,7 @@ uint8_t same = 0;
 
 #ifdef ESP32
 #include <WiFi.h>
+#include "soc/usb_serial_jtag_reg.h"
 #include <WebServer.h>
 #include <MD5Builder.h>
 
@@ -317,6 +321,20 @@ void setup() {
 
 #ifdef ESP32
 int pendingR = 0; // "R" came, the number is the next byte
+
+const unsigned long HOST_QUIET = 3000;
+unsigned long lastRx;   // the last byte from the host
+bool polled = false;    // the host has polled since the last replug
+bool replugged = false; // done for this silence
+
+// usbReplug: the host sees the cable go and come back and enumerates again.
+void usbReplug() {
+  SET_PERI_REG_MASK(USB_SERIAL_JTAG_CONF0_REG, USB_SERIAL_JTAG_PAD_PULL_OVERRIDE);
+  CLEAR_PERI_REG_MASK(USB_SERIAL_JTAG_CONF0_REG, USB_SERIAL_JTAG_DP_PULLUP);
+  delay(300);
+  SET_PERI_REG_MASK(USB_SERIAL_JTAG_CONF0_REG, USB_SERIAL_JTAG_DP_PULLUP);
+  CLEAR_PERI_REG_MASK(USB_SERIAL_JTAG_CONF0_REG, USB_SERIAL_JTAG_PAD_PULL_OVERRIDE);
+}
 #endif
 
 void loop() {
@@ -339,6 +357,9 @@ void loop() {
   while (Serial.available()) {
     char c = Serial.read();
 #ifdef ESP32
+    lastRx = millis();
+    polled = true;
+    replugged = false;
     if (pendingR) {
       pendingR = 0;
       readStart(c - '0');
@@ -362,6 +383,11 @@ void loop() {
 #endif
   }
 #ifdef ESP32
+  if (polled && !replugged && millis() - lastRx > HOST_QUIET) {
+    replugged = true;
+    polled = false;
+    usbReplug();
+  }
   if (digitalRead(BOOT_PIN) == LOW) apOn();
   if (apUp) {
     web.handleClient();
