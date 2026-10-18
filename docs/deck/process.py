@@ -444,7 +444,7 @@ def rules():
               note="board design rules for the line: 5 mm border, parts on side A, 2 mm pads with teardrops, "
                    "mask window wider than the rivet flange, two rivet sizes, 0.3 mm gaps")
     items = [("rb", "Борт 5 мм", "под клинья и реперы"),
-             ("ra", "Детали на стороне A", "паста и сборка идут там"),
+             ("ra", "Сборка односторонняя", "все детали на стороне A"),
              ("rp", "Площадки от 2 мм", "teardrop у входа дорожки"),
              ("rw", "Окно маски от 1.0 мм", "шире буртика заклёпки"),
              ("rr", "Две заклёпки", "0.4 / 0.6 и от 1.0 мм внутри"),
