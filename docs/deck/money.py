@@ -11,10 +11,10 @@ from common import cards, photo, table
 def price():
     s = Slide("деньги", "Цена против рынка",
               "Ниже набора LPKF, а умеет больше Carvera и Voltera.",
-              note="price positioning: Standard about 1.5 M rub, Max above 2.5 M, LPKF line several M, "
+              note="price positioning: Taiga PCB about 1.5 M rub, Taiga PCB Max above 2.5 M, LPKF line several M, "
                    "Carvera 0.95 M (no paste, no test), Voltera EUR 3,850-5,400 (no milling)")
-    rivals = [("std", "Standard", "около 1.5 млн ₽", "весь путь платы", "focal"),
-              ("max", "Max", "выше 2.5 млн ₽", "лист 500 × 500", "focal"),
+    rivals = [("std", "Taiga PCB", "около 1.5 млн ₽", "весь путь платы", "focal"),
+              ("max", "Taiga PCB Max", "выше 2.5 млн ₽", "лист 500 × 500", "focal"),
               ("lpkf", "Линия LPKF", "несколько млн ₽", "несколько машин", "plain"),
               ("carv", "Carvera", "0.95 млн ₽", "без пасты и проверки", "plain"),
               ("volt", "Voltera", "€3,850–5,400", "не фрезерует", "plain")]
@@ -30,7 +30,7 @@ def price():
 
 def hardware():
     s = Slide("деньги", "Железо одного станка",
-              "Оценка по группам, тыс ₽. Её считали под стол 300 × 300, ближе к Standard, до решений о заклёпках и игле.",
+              "Оценка по группам, тыс ₽. Её считали под стол 300 × 300, ближе к Taiga PCB, до решений о заклёпках и игле.",
               note="hardware estimate by group, 219-399 k rub total, computed before rivets, needle, hot air, "
                    "the flip frame and the 510 table; must be recomputed")
     left = [("Группа", "тыс ₽"), ("Механика", "74–132"), ("Шпиндель", "5–15"), ("Питание", "15–25"),
@@ -65,17 +65,17 @@ def new_costs():
 def economics():
     s = Slide("деньги", "Экономика одного станка",
               "Железо стоит в 4–7 раз меньше цены. Главные затраты в разработке.",
-              note="unit economics: hardware 219-399 k rub, assembly 40-80 h, price Standard 1.5 M and Max 2.5+ M; "
+              note="unit economics: hardware 219-399 k rub, assembly 40-80 h, price Taiga PCB 1.5 M and Taiga PCB Max 2.5+ M; "
                    "development 3-6 M rub over 1-2 years; 10 machines a year is 15-25 M rub depending on the mix")
     nums = [("hw", "219–399 тыс ₽", "железо одного станка"),
             ("labor", "40–80 ч", "сборка одного станка"),
-            ("sale", "1.5 и 2.5+ млн ₽", "Standard и Max"),
+            ("sale", "1.5 и 2.5+ млн ₽", "Taiga PCB и Taiga PCB Max"),
             ("dev", "3–6 млн ₽", "разработка, 1–2 года")]
     for i, (nid, big, sub) in enumerate(nums):
         s.node(nid, M + i * 292, 236, 268, 140, "focal" if nid == "sale" else "plain", big, sub,
                size=28, sub_size=15)
     s.node("year", M, 432, W - 2 * M, 96, "load", "10 станков в год ≈ 15–25 млн ₽ выручки",
-           "чем больше доля Max, тем выше выручка", size=24, sub_size=16)
+           "чем больше доля Taiga PCB Max, тем выше выручка", size=24, sub_size=16)
     return s
 
 

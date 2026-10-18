@@ -291,10 +291,10 @@ def flipper():
         size=20)
     facts = [("frame", "Рамка 320 или 520 мм", "клинья 5 × 100 × 1 мм"),
              ("border", "Борт 5 мм", "жертвенный, в нём реперы"),
-             ("height", "До 170 или 270 мм", "подъём для Standard и Max")]
+             ("height", "До 170 или 270 мм", "подъём для Taiga PCB и Taiga PCB Max")]
     for i, (nid, t, sub) in enumerate(facts):
         s.node(nid, M + i * 392, 420, 368, 104, "plain", t, sub, size=22, sub_size=16)
-    s.para(M, 576, "Рамка Standard может поместиться в магазин. Рамка Max стоит вдоль задней стенки.", W - 2 * M, 17)
+    s.para(M, 576, "Рамка Taiga PCB может поместиться в магазин. Рамка Taiga PCB Max стоит вдоль задней стенки.", W - 2 * M, 17)
     return s
 
 
@@ -302,12 +302,12 @@ def lift():
     s = Slide("переворот", "Высота подъёма",
               "Лист вращается вокруг своей средней линии. Подъём равен половине ширины плюс запас 20 мм.",
               note="lift height by board width: 100 -> 70 mm, 200 -> 120, 300 -> 170, 500 -> 270; "
-                   "Standard Z 200 covers 300 mm boards, Max Z 300 covers the 500 sheet")
+                   "Taiga PCB Z 200 covers 300 mm boards, Taiga PCB Max Z 300 covers the 500 sheet")
     rows = [("Ширина платы", "Подъём"), ("100 мм", "70 мм"), ("200 мм", "120 мм"),
             ("300 мм", "170 мм"), ("500 мм", "270 мм")]
     table(s, M, 260, [320, 240], rows, size=22, row_h=56, accent_col=1)
-    s.node("zs", 700, 260, 516, 96, "plain", "Standard: Z 200 мм", "платы до 300 мм", size=24, sub_size=16)
-    s.node("zm", 700, 376, 516, 96, "focal", "Max: Z 300 мм", "лист 500 × 500 мм", size=24, sub_size=16)
+    s.node("zs", 700, 260, 516, 96, "plain", "Taiga PCB: Z 200 мм", "платы до 300 мм", size=24, sub_size=16)
+    s.node("zm", 700, 376, 516, 96, "focal", "Taiga PCB Max: Z 300 мм", "лист 500 × 500 мм", size=24, sub_size=16)
     s.para(700, 512, "Программа считает подъём под каждую плату. Малые платы переворачиваются быстро.", 516, 18, "ink")
     return s
 
@@ -352,8 +352,8 @@ def cassette():
         ["клинья под борта", "на столе", "детали вверх", "полка n + 1"], size=21)
     items = [("gap", "Полки, а не стопка", "листы медь к меди липнут"),
              ("h", "Полка 15–20 мм", "10 полок около 200 мм"),
-             ("std", "Standard", "куб шире на 330 мм, опция"),
-             ("max", "Max", "приставка или без кассеты")]
+             ("std", "Taiga PCB", "куб шире на 330 мм, опция"),
+             ("max", "Taiga PCB Max", "приставка или без кассеты")]
     cards(s, items, y=396, cols=4, h=110, size=20, sub_size=15, kinds={"gap": "focal"})
     return s
 

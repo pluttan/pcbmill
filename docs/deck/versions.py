@@ -1,15 +1,15 @@
-"""Chapter 3: two versions of the machine, Standard (300x300, cube housing) and Max (510x510)."""
+"""Chapter 3: two versions of the machine, Taiga PCB (300x300, cube housing) and Taiga PCB Max (510x510)."""
 from deckkit import M, W, Slide
 
 from common import cards, table
 
 
 def versions():
-    s = Slide("две версии", "Standard и Max",
-              "Standard ставится на стол в кубическом корпусе. Max берёт лист 500 × 500 мм целиком.",
+    s = Slide("две версии", "Taiga PCB и Taiga PCB Max",
+              "Taiga PCB ставится на стол в кубическом корпусе. Taiga PCB Max берёт лист 500 × 500 мм целиком.",
               note="two versions side by side: table, flip lift, Z travel, flip frame, housing, mass, blank, "
                    "rival, buyer; sizes are estimates")
-    rows = [("", "Standard", "Max"),
+    rows = [("", "Taiga PCB", "Taiga PCB Max"),
             ("Стол", "300 × 300 мм", "510 × 510 мм"),
             ("Подъём при перевороте", "до 170 мм", "до 270 мм"),
             ("Ход Z", "около 200 мм", "300 мм"),
@@ -43,30 +43,30 @@ def shared():
 
 
 def standard_first():
-    s = Slide("две версии", "Standard выходит первым",
+    s = Slide("две версии", "Taiga PCB выходит первым",
               "Почти любой прототип помещается на 300 × 300 мм. Малый станок проще сделать точным.",
-              note="why Standard first: a 100x160 board fits; a short Z is stiffer; the cube goes on a desk and is "
+              note="why Taiga PCB first: a 100x160 board fits; a short Z is stiffer; the cube goes on a desk and is "
                    "easy to ship and show; the prototype is cheaper")
     items = [("fit", "Плата 100 × 160 мм", "и почти любой прототип помещаются"),
              ("stiff", "Короткая ось Z", "точность 0.02 мм держать проще"),
              ("show", "Куб на стол", "помещается в машину, его возят на показ"),
              ("cheap", "Макет дешевле", "короче рельсы, меньше насос")]
     cards(s, items, y=228, h=110, kinds={"fit": "focal"})
-    s.para(M, 496, "Max выходит вторым: та же голова на большой раме.", W - 2 * M, 18, "ink")
+    s.para(M, 496, "Taiga PCB Max выходит вторым: та же голова на большой раме.", W - 2 * M, 18, "ink")
     return s
 
 
 def pricing():
     s = Slide("две версии", "Цена по пользе, а не по железу",
-              "Стол почти не меняет себестоимость. Поэтому Max стоит заметно дороже Standard.",
-              note="pricing direction: Standard about 1.5 M rub, above Carvera because it does the whole board path; Max above 2.5 M; "
+              "Стол почти не меняет себестоимость. Поэтому Taiga PCB Max стоит заметно дороже Taiga PCB.",
+              note="pricing direction: Taiga PCB about 1.5 M rub, above Carvera because it does the whole board path; Taiga PCB Max above 2.5 M; "
                    "the hardware difference is tens of thousands of rubles; numbers to be checked at demos")
-    s.node("std", M, 236, 560, 150, "plain", "Standard: около 1.5 млн ₽", "дороже Carvera: весь путь платы",
+    s.node("std", M, 236, 560, 150, "plain", "Taiga PCB: около 1.5 млн ₽", "дороже Carvera: весь путь платы",
            size=26, sub_size=17)
-    s.node("max", 656, 236, 560, 150, "focal", "Max: выше 2.5 млн ₽", "замена части линии LPKF",
+    s.node("max", 656, 236, 560, 150, "focal", "Taiga PCB Max: выше 2.5 млн ₽", "замена части линии LPKF",
            size=26, sub_size=17)
     s.para(M, 440, "Разница в железе составляет десятки тысяч рублей: длинные рельсы, большой портал, корпус, тумба. "
-           "Max сложнее возить и обслуживать, это тоже довод за высокую цену.", W - 2 * M, 18, "ink")
+           "Taiga PCB Max сложнее возить и обслуживать, это тоже довод за высокую цену.", W - 2 * M, 18, "ink")
     s.text(M, 560, "Это направление, а не расчёт. Цены проверит вопрос о цене при показе.", 16, "soft")
     return s
 
@@ -75,11 +75,11 @@ def night_batch():
     s = Slide("две версии", "Ночная партия",
               "Вечером человек кладёт в кассету 10 заготовок. Утром он забирает 10 готовых плат.",
               note="night batch with the cassette: small series of 5-10 boards for departments and firms; "
-                   "an option for Standard, an attachment or nothing for Max")
+                   "an option for Taiga PCB, an attachment or nothing for Taiga PCB Max")
     s.node("night", M, 236, W - 2 * M, 120, "focal", "10 плат за ночь", "без человека у станка",
            size=30, sub_size=17)
     items = [("who", "Кому", "фирмам и КБ: мелкая серия"),
-             ("std", "Standard", "кассета опцией"),
-             ("max", "Max", "приставка или без кассеты")]
+             ("std", "Taiga PCB", "кассета опцией"),
+             ("max", "Taiga PCB Max", "приставка или без кассеты")]
     cards(s, items, y=396, cols=3, h=110, size=22)
     return s

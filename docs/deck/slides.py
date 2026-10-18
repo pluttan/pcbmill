@@ -18,16 +18,16 @@ import why
 from common import bullets, photo
 from explain import EXPLAIN  # noqa: F401  deckkit reads EXPLAIN from this module
 
-TITLE = "Плата за час"
-FOOTER = "pcbmill · настольная линия для печатных плат"
+TITLE = "Taiga PCB"
+FOOTER = "Taiga PCB · настольная линия для печатных плат"
 FOOT_CAT = 1150
 
 CHAPTERS = [
     ("Зачем станок", "Кому и почему нужна плата за день.",
-     [why.problem, why.market, why.buyers, why.offer]),
+     [why.problem, why.market, why.buyers, why.offer, why.family]),
     ("Путь платы", "Что происходит с платой от гербера до пайки.",
      [why.flow, why.order, why.factory]),
-    ("Две версии", "Standard на стол и Max для листа 500 × 500.",
+    ("Две версии", "Taiga PCB на стол и Taiga PCB Max для листа 500 × 500.",
      [versions.versions, versions.shared, versions.standard_first, versions.pricing, versions.night_batch]),
     ("Рама и оси", "Как станок двигается и держит точность 0.02 мм.",
      [frame.own_frame, frame.layout, frame.motors, frame.rails, frame.zaxis]),
@@ -65,9 +65,10 @@ CHAPTERS = [
 def title():
     s = Slide(None, None, note="title: one desktop machine takes a board from gerber to an assembled double-sided "
                                "board; photo of a milled PCB")
-    s.eyebrow(M, 228, "pcbmill · весь проект · 18.10.2026", "accent")
-    s.text(M, 300, "Плата за час", 76)
-    s.para(M, 368, "Один настольный станок проходит весь путь: от гербера до двухсторонней платы с деталями.",
+    s.raw(lambda t: f'<image href="img/taiga-logo.svg" x="{M}" y="96" width="88" height="88"/>', "back")
+    s.eyebrow(M, 228, "семейство Taiga · весь проект · 18.10.2026", "accent")
+    s.text(M, 300, "Taiga PCB", 76)
+    s.para(M, 368, "Плата за час. Один настольный станок проходит весь путь: от гербера до двухсторонней платы с деталями.",
            520, 26, "muted")
     s.text(M, 640, "Цены и сроки в презентации оценки.", 15, "soft")
     photo(s, 680, 150, 536, 402, "milledpcb.jpg", "плата, выфрезерованная на настольном станке")

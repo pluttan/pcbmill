@@ -27,7 +27,7 @@ def layout():
     s = Slide("рама", "Стол стоит, ездит портал",
               "Стол неподвижен, поэтому вакуум и пластина не трясутся. Голова ездит над столом на портале.",
               note="layout from above: fixed table, magazine strip along one side, gantry moves; "
-                   "travel Standard about 380 x 300 x 200 mm, Max about 600 x 510 x 300 mm")
+                   "travel Taiga PCB about 380 x 300 x 200 mm, Taiga PCB Max about 600 x 510 x 300 mm")
     s.node("plate", M, 228, 352, 352, "focal", "Стол", "300 или 510 мм", size=22, sub_size=16)
     s.node("mag", M + 368, 228, 72, 352, "store", "ER", size=16)
     s.text(M + 404, 604, "магазин", 14, "muted", "middle")
@@ -36,7 +36,7 @@ def layout():
     items = [("tx", "Ход X: 380 или 600 мм", "стол и полоса магазина"),
              ("ty", "Ход Y: 300 или 510 мм", "стол целиком"),
              ("tz", "Ход Z: 200 или 300 мм", "переворот листа"),
-             ("frame", "Первое число для Standard", "второе для Max, оценка")]
+             ("frame", "Первое число для Taiga PCB", "второе для Taiga PCB Max, оценка")]
     cards(s, items, y=228, cols=1, h=76, gap=16, size=20, sub_size=15, x=584, width=632)
     return s
 
@@ -70,7 +70,7 @@ def rails():
 def zaxis():
     s = Slide("рама", "Ось Z на 200 и 300 мм",
               "Длинный ход нужен для переворота листа. Точность у стола при этом остаётся 0.02 мм.",
-              note="Z axis 200 mm on Standard and 300 mm on Max for flipping the sheet; to keep 0.02 mm at the table: 20 mm rails, "
+              note="Z axis 200 mm on Taiga PCB and 300 mm on Taiga PCB Max for flipping the sheet; to keep 0.02 mm at the table: 20 mm rails, "
                    "two blocks per rail far apart, 15 mm plate, double-nut ball screw")
     items = [("rail", "Рельсы от 20 мм", "по две каретки, далеко друг от друга"),
              ("plate", "Плита Z от 15 мм", "сталь или алюминий"),

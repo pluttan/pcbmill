@@ -59,11 +59,28 @@ def buyers():
 def offer():
     s = Slide("зачем", "Что мы предлагаем",
               "Одна настольная машина вместо линии из нескольких станков.",
-              note="the offer: the whole board path on one machine, made in Russia, two versions Standard and Max")
+              note="the offer: the whole board path on one machine, made in Russia, two versions Taiga PCB and Taiga PCB Max")
     items = [("path", "Весь путь платы", "фрезеровка, проверка, маска, заклёпки, паста, сборка, пайка"),
              ("ru", "Сделано в России", "сервис за дни, доработка под заказчика, реестр 719"),
-             ("cost", "Две версии", "Standard на стол и Max для листа 500 × 500")]
+             ("cost", "Две версии", "Taiga PCB на стол и Taiga PCB Max для листа 500 × 500")]
     cards(s, items, y=236, cols=1, h=100, gap=24, size=24, kinds={"path": "focal"})
+    return s
+
+
+def family():
+    s = Slide("зачем", "Станок в семействе Taiga",
+              "Taiga REI отлаживает схему на макете. Taiga PCB делает из неё готовую плату.",
+              note="the machine joins the Taiga family: debug on Taiga REI with an MCU adapter, lay out the board by the "
+                   "machine rules, make it on Taiga PCB, flash it over the air with the Taiga programmer")
+    row(s, ["rei", "layout", "pcb", "flash"], M, 236, 270, 110, 24, lambda i: "focal" if i == 2 else "plain",
+        ["Taiga REI", "Разводка", "Taiga PCB", "Прошивка"],
+        ["отладка схемы на макете", "по правилам станка", "плата с деталями за день", "по воздуху, Taiga REI"],
+        size=21)
+    items = [("esp", "Один ESP32-C3", "программатор REI и щуп станка"),
+             ("tai", "Среда .tai", "шлёт гербер на станок, как прошивку"),
+             ("ru", "Отечественная ЭКБ", "заявка в ФСИ и реестр 719"),
+             ("orgs", "Письма готовятся", "27 ЦНИИ, Росатом, «Гранит», МГТУ")]
+    cards(s, items, y=396, cols=4, h=110, size=20, sub_size=15, kinds={"tai": "load"})
     return s
 
 
