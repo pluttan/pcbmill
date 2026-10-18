@@ -58,10 +58,10 @@ def buyers():
 def offer():
     s = Slide("зачем", "Что мы предлагаем",
               "Одна настольная машина вместо линии из нескольких станков.",
-              note="the offer: the whole board path on one machine, made in Russia, 1.5-2.5 M rub estimate")
+              note="the offer: the whole board path on one machine, made in Russia, two versions Standard and Max")
     items = [("path", "Весь путь платы", "фрезеровка, проверка, маска, заклёпки, паста, сборка, пайка"),
              ("ru", "Сделано в России", "сервис за дни, доработка под заказчика, реестр 719"),
-             ("cost", "1.5–2.5 млн ₽", "оценка; линия LPKF стоит в разы дороже")]
+             ("cost", "Две версии", "Standard на стол и Max для листа 500 × 500")]
     cards(s, items, y=236, cols=1, h=100, gap=24, size=24, kinds={"path": "focal"})
     return s
 

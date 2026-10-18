@@ -11,24 +11,26 @@ from common import cards, photo, table
 def price():
     s = Slide("деньги", "Цена против рынка",
               "Ниже набора LPKF, а умеет больше Carvera и Voltera.",
-              note="price positioning: our 1.5-2.5 M rub vs LPKF line several M, Carvera 0.95 M (no paste, no test), "
-                   "Voltera ~0.4-0.5 M (no milling)")
-    rivals = [("ours", "Наша линия", "1.5–2.5 млн ₽", "весь путь платы", "focal"),
+              note="price positioning: Standard about 1.5 M rub, Max above 2.5 M, LPKF line several M, "
+                   "Carvera 0.95 M (no paste, no test), Voltera EUR 3,850-5,400 (no milling)")
+    rivals = [("std", "Standard", "около 1.5 млн ₽", "весь путь платы", "focal"),
+              ("max", "Max", "выше 2.5 млн ₽", "лист 500 × 500", "focal"),
               ("lpkf", "Линия LPKF", "несколько млн ₽", "несколько машин", "plain"),
-              ("carv", "Makera Carvera", "0.95 млн ₽", "без пасты, сборки, проверки", "plain"),
-              ("volt", "Voltera V-One", "€3,850–5,400", "паста, но не фрезерует", "plain")]
+              ("carv", "Carvera", "0.95 млн ₽", "без пасты и проверки", "plain"),
+              ("volt", "Voltera", "€3,850–5,400", "не фрезерует", "plain")]
     for i, (nid, name, cost, what, kind) in enumerate(rivals):
-        s.node(nid, M + i * 292, 236, 268, 200, kind)
-        s.text(M + i * 292 + 134, 284, name, 21, "ink", "middle", owner=nid)
-        s.text(M + i * 292 + 134, 340, cost, 24, "ink", "middle", owner=nid)
-        s.text(M + i * 292 + 134, 392, what, 14, "muted", "middle", owner=nid)
+        x = M + i * 235
+        s.node(nid, x, 236, 211, 200, kind)
+        s.text(x + 105, 284, name, 21, "ink", "middle", owner=nid)
+        s.text(x + 105, 340, cost, 20, "ink", "middle", owner=nid)
+        s.text(x + 105, 392, what, 14, "muted", "middle", owner=nid)
     s.para(M, 500, "Цены LPKF дилеры дают под заказ, поэтому для неё только оценка.", W - 2 * M, 16)
     return s
 
 
 def hardware():
     s = Slide("деньги", "Железо одного станка",
-              "Оценка по группам, тыс ₽. Её считали до решений о заклёпках, игле, фене и поле 500 × 500.",
+              "Оценка по группам, тыс ₽. Её считали под стол 300 × 300, ближе к Standard, до решений о заклёпках и игле.",
               note="hardware estimate by group, 219-399 k rub total, computed before rivets, needle, hot air, "
                    "the flip frame and the 510 table; must be recomputed")
     left = [("Группа", "тыс ₽"), ("Механика", "74–132"), ("Шпиндель", "5–15"), ("Питание", "15–25"),
@@ -61,18 +63,18 @@ def new_costs():
 
 def economics():
     s = Slide("деньги", "Экономика одного станка",
-              "Железо стоит в 5–7 раз меньше цены. Главные затраты в разработке.",
-              note="unit economics: hardware 219-399 k rub, assembly 40-80 h, price 1.5-2.5 M; "
-                   "development 3-6 M rub over 1-2 years; 10 machines a year is about 20 M rub")
+              "Железо стоит в 4–7 раз меньше цены. Главные затраты в разработке.",
+              note="unit economics: hardware 219-399 k rub, assembly 40-80 h, price Standard 1.5 M and Max 2.5+ M; "
+                   "development 3-6 M rub over 1-2 years; 10 machines a year is 15-25 M rub depending on the mix")
     nums = [("hw", "219–399 тыс ₽", "железо одного станка"),
             ("labor", "40–80 ч", "сборка одного станка"),
-            ("sale", "1.5–2.5 млн ₽", "цена продажи"),
+            ("sale", "1.5 и 2.5+ млн ₽", "Standard и Max"),
             ("dev", "3–6 млн ₽", "разработка, 1–2 года")]
     for i, (nid, big, sub) in enumerate(nums):
         s.node(nid, M + i * 292, 236, 268, 140, "focal" if nid == "sale" else "plain", big, sub,
                size=28, sub_size=15)
-    s.node("year", M, 432, W - 2 * M, 96, "load", "10 станков в год ≈ 20 млн ₽ выручки",
-           "покупатели: кафедры, кванториумы, НИИ, фирмы электроники", size=24, sub_size=16)
+    s.node("year", M, 432, W - 2 * M, 96, "load", "10 станков в год ≈ 15–25 млн ₽ выручки",
+           "больше Max: выше выручка; покупатели через закупки", size=24, sub_size=16)
     return s
 
 
@@ -173,7 +175,7 @@ def next_step():
               note="next step: full cycle on one real board, then a demo to three organisations with the price question")
     row(s, ["proto", "cycle", "demo"], M, 260, 352, 120, 48, lambda i: "focal" if i == 1 else "plain",
         ["Модули на своём станке", "Полный цикл на плате", "Показ трём организациям"],
-        ["автосмена, заклёпки, игла", "от гербера до пайки", "цена 1.5–2.5 млн ₽"], size=21)
+        ["автосмена, заклёпки, игла", "от гербера до пайки", "вопрос о цене двух версий"], size=21)
     photo(s, M, 440, 552, 176, "feeder.jpg", "ленты с деталями для сборки")
     s.para(680, 470, "Если две организации готовы купить, делаем раму, декларацию и заявку в реестр 719.",
            536, 19, "ink")

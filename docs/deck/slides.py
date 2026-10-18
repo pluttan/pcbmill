@@ -13,6 +13,7 @@ import control
 import frame
 import money
 import process
+import versions
 import why
 from common import bullets, photo
 from explain import EXPLAIN  # noqa: F401  deckkit reads EXPLAIN from this module
@@ -26,6 +27,8 @@ CHAPTERS = [
      [why.problem, why.market, why.buyers, why.offer]),
     ("Путь платы", "Что происходит с платой от гербера до пайки.",
      [why.flow, why.order, why.factory]),
+    ("Две версии", "Standard на стол и Max для листа 500 × 500.",
+     [versions.versions, versions.shared, versions.standard_first, versions.pricing]),
     ("Рама и оси", "Как станок двигается и держит точность 0.02 мм.",
      [frame.own_frame, frame.layout, frame.motors, frame.rails, frame.zaxis]),
     ("Стол", "Как плата держится и что лежит под ней.",
@@ -71,11 +74,11 @@ def title():
 
 
 def contents():
-    s = Slide("содержание", "16 глав",
+    s = Slide("содержание", f"{len(CHAPTERS)} глав",
               "Презентация идёт по станку последовательно: от рынка через узлы и процесс к деньгам.",
-              note="table of contents: 16 chapters in order")
+              note="table of contents: chapters in order")
     for i, (name, _, _) in enumerate(CHAPTERS):
-        x, y = M + (i // 8) * 584, 236 + (i % 8) * 50
+        x, y = M + (i // 9) * 584, 236 + (i % 9) * 44
         s.text(x, y, f"{i + 1:02d}", 22, "accent")
         s.text(x + 56, y, name, 22, "ink")
     return s
