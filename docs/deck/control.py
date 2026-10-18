@@ -123,3 +123,29 @@ def dust():
              ("risk", "Пыль против чистоты", "главный риск всего состава")]
     cards(s, items, y=224, h=96, size=22, kinds={"risk": "focal"})
     return s
+
+
+def housing():
+    s = Slide("корпус", "Закрытый корпус с экраном",
+              "Станок работает без компьютера: экран и кнопки стоят на корпусе.",
+              note="closed housing as in NestWorks C500: door with a window and a switch, touch screen with KlipperScreen, "
+                   "Wi-Fi for jobs from a PC or phone, light inside for the camera")
+    items = [("door", "Дверь с окном", "датчик двери останавливает станок"),
+             ("screen", "Сенсорный экран", "KlipperScreen на корпусе"),
+             ("wifi", "Wi-Fi", "задания с компьютера и телефона"),
+             ("light", "Свет внутри", "камера видит плату ровно")]
+    cards(s, items, y=228, h=110, kinds={"screen": "focal"})
+    return s
+
+
+def chip_tray():
+    s = Slide("корпус", "Выдвижной лоток",
+              "Стружка падает в лоток под столом. Человек выдвигает лоток спереди и вытряхивает.",
+              note="chip tray as in NestWorks C500: a drawer under the table, channels along the table edges, "
+                   "the HEPA vacuum takes fine dust, the table is cleaned before paste")
+    items = [("tray", "Лоток под столом", "выдвигается спереди"),
+             ("ch", "Каналы по краям стола", "ведут стружку к лотку"),
+             ("vac", "Пылесос HEPA", "забирает мелкую пыль"),
+             ("clean", "Чистота перед пастой", "пылесос чистит стол и плату")]
+    cards(s, items, y=228, h=110, kinds={"tray": "focal"})
+    return s

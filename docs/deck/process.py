@@ -23,6 +23,22 @@ def millmap():
     return s
 
 
+def laser():
+    s = Slide("фрезеровка", "Лазерный датчик расстояния",
+              "Лазер быстро снимает рельеф без касания. Точную карту потом добирает щуп.",
+              note="laser distance sensor as a fast helper of the height map: a rough scan of the whole sheet, "
+                   "then the probe refines; the laser also sees the mask surface, the probe does not; "
+                   "C500 laser resolution 0.1 mm is too coarse alone")
+    row(s, ["scan", "rough", "touch", "fine"], M, 250, 260, 110, 32, lambda i: "focal" if i == 3 else "plain",
+        ["Лазер", "Грубая карта", "Щуп", "Точная карта"],
+        ["весь лист за проход", "горбы и низины", "точки там, где рельеф круче", "для V-фрезы и иглы"], size=21)
+    bullets(s, M, 430, [
+        "У NestWorks C500 разрешение лазера 0.1 мм. Для глубины реза 0.1 мм этого мало, поэтому щуп остаётся.",
+        "Лазер видит поверхность маски. Щупу маска мешает, лазеру нет.",
+    ], W - 2 * M)
+    return s
+
+
 def isolation():
     s = Slide("фрезеровка", "Изоляция 0.2 мм",
               "Программа pcbscan уже режет дорожки и зазоры 0.2 мм на настоящей плате.",
