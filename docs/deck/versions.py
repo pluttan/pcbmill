@@ -16,7 +16,7 @@ def versions():
             ("Рамка переворота", "около 320 мм", "около 520 мм"),
             ("Корпус", "куб 650 × 600 × 750 мм, на стол", "900 × 800 × 900 мм, на тумбе"),
             ("Масса", "около 100 кг", "от 150 кг"),
-            ("С кем сравнивают", "Carvera, 949 тыс ₽", "линия LPKF, миллионы ₽"),
+            ("Что заменяет", "Carvera, Voltera и тестер", "линию LPKF для листа"),
             ("Покупатель", "кванториумы, школы, фирмы", "кафедры, НИИ, панели плат")]
     table(s, M, 240, [320, 416, 416], rows, size=17, row_h=44)
     return s
@@ -58,9 +58,9 @@ def standard_first():
 def pricing():
     s = Slide("две версии", "Цена по пользе, а не по железу",
               "Стол почти не меняет себестоимость. Поэтому Max стоит заметно дороже Standard.",
-              note="pricing direction: Standard about 1.5 M rub or lower, near Carvera at 949k; Max clearly above 2.5 M; "
+              note="pricing direction: Standard about 1.5 M rub, above Carvera because it does the whole board path; Max above 2.5 M; "
                    "the hardware difference is tens of thousands of rubles; numbers to be checked at demos")
-    s.node("std", M, 236, 560, 150, "plain", "Standard: около 1.5 млн ₽", "или ниже, ближе к Carvera",
+    s.node("std", M, 236, 560, 150, "plain", "Standard: около 1.5 млн ₽", "дороже Carvera: весь путь платы",
            size=26, sub_size=17)
     s.node("max", 656, 236, 560, 150, "focal", "Max: выше 2.5 млн ₽", "замена части линии LPKF",
            size=26, sub_size=17)
