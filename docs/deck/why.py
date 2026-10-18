@@ -19,7 +19,7 @@ def problem():
     for i, (nid, big, sub, kind) in enumerate(facts):
         s.node(nid, M + i * 392, 232, 368, 132, kind, big, sub, size=34, sub_size=17)
     s.para(M, 432, "По сообщениям форумов, JLCPCB с февраля 2026 года в Россию не возит. "
-           "Кафедре, кружку или фирме электроники плата нужна сегодня, а не через месяц.", W - 2 * M, 20, "ink")
+           "Фирме, которая разрабатывает электронику, плата нужна сегодня, а не через месяц.", W - 2 * M, 20, "ink")
     return s
 
 
@@ -41,16 +41,17 @@ def market():
 
 def buyers():
     s = Slide("зачем", "Кто покупает",
-              "Покупатели платят за плату сегодня. Большая часть покупает через госзакупки.",
-              note="segments: STEM clubs and schools, university departments, small electronics firms, makers, "
-                   "owners of 3040/6040 who want a kit")
-    items = [("kvant", "Кванториумы и школы", "станок для кружка с методичкой"),
-             ("dept", "Кафедры вузов", "прототипы для лабораторных и курсовых"),
-             ("firm", "Фирмы электроники", "плата за день вместо месяца"),
-             ("maker", "Мейкеры", "смотрят на Carvera Air, ищут дешевле"),
-             ("own", "Владельцы 3040 и 6040", "комплект для своего станка")]
-    cards(s, items, y=228, h=88, kinds={"dept": "focal", "kvant": "focal"})
-    s.para(M, 576, "Закупку до 600 тыс ₽ проводят у единственного поставщика, 44-ФЗ ст. 93.",
+              "Станок покупают компании, которые разрабатывают свои платы. Они платят за время.",
+              note="buyers: electronics design firms, R&D departments of manufacturers, research institutes and design "
+                   "bureaus (the gerber stays inside), hardware startups, small series; each prototype iteration "
+                   "is 3-5 weeks shorter")
+    items = [("design", "Фирмы разработки электроники", "десятки прототипов в год"),
+             ("rnd", "Отделы разработки заводов", "приборы, связь, автоматика"),
+             ("kb", "НИИ и КБ", "гербер не уходит наружу"),
+             ("start", "Стартапы с железом", "быстрые итерации до серии"),
+             ("series", "Мелкая серия", "5–10 плат за ночь с кассетой")]
+    cards(s, items, y=228, h=88, kinds={"design": "focal", "rnd": "focal"})
+    s.para(M, 576, "Каждая итерация прототипа становится короче на 3–5 недель. Чертёж платы остаётся в компании.",
            W - 2 * M, 17)
     return s
 
