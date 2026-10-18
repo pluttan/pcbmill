@@ -47,7 +47,7 @@ def new_costs():
     s = Slide("деньги", "Что добавить в расчёт",
               "Новые узлы ещё не посчитаны. Их цены ждут поиска и опыта.",
               note="items not yet costed: punches, positive displacement dispenser, hot air head, flip frame, "
-                   "Z travel 300 and the 510 table, G10 plates")
+                   "Z travel 300 and the 510 table, G10 plates, RFID, laser sensor, blank cassette")
     items = [("p", "Пуансоны", "конус и плоский, расходник"),
              ("d", "Дозатор вытеснения", "мотор, поршень, шприцы"),
              ("f", "Фен на голове", "нагреватель и вентилятор"),
@@ -55,9 +55,10 @@ def new_costs():
              ("z", "Z 300 и стол 510", "длиннее рельсы и винты"),
              ("g", "Пластины G10", "первый комплект"),
              ("rf", "RFID", "метки и считыватель"),
-             ("ls", "Лазерный датчик", "расстояние до платы")]
-    cards(s, items, y=224, cols=4, h=150, size=21, sub_size=15,
-          kinds={k: "load" for k in ("p", "d", "f", "fr", "z", "g", "rf", "ls")})
+             ("ls", "Лазерный датчик", "расстояние до платы"),
+             ("cs", "Кассета", "полки, датчики дыма")]
+    cards(s, items, y=224, cols=3, h=96, size=21, sub_size=15,
+          kinds={k: "load" for k in ("p", "d", "f", "fr", "z", "g", "rf", "ls", "cs")})
     return s
 
 

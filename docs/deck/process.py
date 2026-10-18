@@ -342,6 +342,38 @@ def register():
     return s
 
 
+def cassette():
+    s = Slide("кассета", "Кассета на 10 плат",
+              "Каждая заготовка лежит на своей полке. Готовая плата возвращается на ту же полку.",
+              note="blank cassette left of the table: shelves with a gap under the borders so the flip wedges reach them; "
+                   "the finished board goes back to its shelf because parts on side A forbid stacking")
+    row(s, ["take", "work", "back", "next"], M, 236, 270, 110, 24, lambda i: "focal" if i == 2 else "plain",
+        ["Заготовка", "Полный цикл", "На ту же полку", "Следующая"],
+        ["клинья под борта", "на столе", "детали вверх", "полка n + 1"], size=21)
+    items = [("gap", "Полки, а не стопка", "листы медь к меди липнут"),
+             ("h", "Полка 15–20 мм", "10 полок около 200 мм"),
+             ("std", "Standard", "куб шире на 330 мм, опция"),
+             ("max", "Max", "приставка или без кассеты")]
+    cards(s, items, y=396, cols=4, h=110, size=20, sub_size=15, kinds={"gap": "focal"})
+    return s
+
+
+def unattended():
+    s = Slide("кассета", "Работа без человека",
+              "Ночью станок сам следит за инструментом, столом, пастой и огнём.",
+              note="unattended batch: RFID wear count and spare tools, plate resurfacing and vacuum between boards, "
+                   "a paste syringe lasts the batch, smoke and temperature sensors cut the hot air, "
+                   "registration per blank, a batch log")
+    items = [("wear", "Износ инструмента", "RFID считает, запасная фреза в магазине"),
+             ("plate", "Между платами", "выравнивание пластины и пылесос"),
+             ("paste", "Паста", "шприц живёт около 8 ч, хватит на партию"),
+             ("fire", "Дым и температура", "фен отключается по аварии"),
+             ("reg", "Привязка каждой платы", "камера и реперы"),
+             ("log", "Журнал партии", "что станок сделал с каждой платой")]
+    cards(s, items, y=224, h=96, size=22, kinds={"fire": "focal"})
+    return s
+
+
 # ==========================
 # ===  11. Paste         ===
 # ==========================
