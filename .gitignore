@@ -13,3 +13,4 @@ scan*.csv
 /win7/mac/
 /win7/*.test
 /build/
+/docs/article/data/*.json

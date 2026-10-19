@@ -1,0 +1,416 @@
+"""Figures for the Habr article (docs/article/habr-pcbmill.md).
+
+Two kinds of data. What the CAM sees on the test board comes from the Go code
+itself: `make article-figs` runs the figs-tagged test win7/figdump_test.go,
+which loads testboard/pcbmill-test.zip and dumps the copper raster, the field
+of distances, the isolation passes and the shorts into data/*.json. The rest
+are measurements copied from the notes that recorded them, named next to each
+constant, so the text and the pictures read the same numbers.
+
+Each figure is a self-contained card in Habr's dark colours (#262626) with
+transparent corners: Habr follows the reader's system theme, so the card has
+to sit on white and on near-black alike.
+
+Run:  make article-figs   ->  docs/article/img/*.png
+
+Signed: pluttan
+"""
+
+from __future__ import annotations
+
+import base64
+import json
+import math
+from pathlib import Path
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib import font_manager, rcParams
+from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.patches import FancyBboxPatch
+
+HERE = Path(__file__).resolve().parent
+OUT = HERE / "img"
+DATA = HERE / "data"
+
+# ==============================
+# ===  Measurements          ===
+# ==============================
+
+# The V-bit of the isolation: tip and angle (win7/cam.go defaultCam).
+TIP, ANGLE = 0.1, 45.0
+# Board rules: the least gap, and the one we advise (docs/pcb-rules.json).
+GAP_MIN, GAP_ADVISED = 0.2, 0.3
+
+# kb pcbmill/autolevel-pcb.md, "Подлёт по прогнозу": commands per point on the
+# simulator, and how far above the forecast the copper was on the real map.
+COMMANDS = (("касание шагами от безопасной высоты", 14.4, "naive"),
+            ("подлёт к прогнозу, затем шаги 0,01", 8.0, "mine"))
+FORECAST = (("ближайшая точка или прямая по двум", 0.15, "naive"),
+            ("плоскость через 4 соседние точки", 0.03, "mine"))
+
+# kb pcbmill/machine-probes-testboard.md: the test board by the test, minutes.
+STAGES = (("изоляция", 18), ("окна маски", 22), ("сверловка", 3), ("V-рез", 6))
+
+# kb pcbmill/gerber-cam-go.md: cut length of the isolation, mm, Go vs Python.
+AGAINST_PY = ((1291, 1293), (564, 563), (3329, 3328), (5813, 5813))
+
+# ==============================
+# ===  Look                  ===
+# ==============================
+
+C = {
+    "card": "#262626",     # Habr dark --background-secondary
+    "ink": "#dedede",      # --text-main
+    "muted": "#ababab",    # --text-secondary
+    "track": "#333333",
+    "grid": "#383838",
+    "mine": "#05a4bd",     # tool paths, my side of a comparison
+    "warn": "#f0503c",     # shorts, the edge of the rules
+    "naive": "#6e6e6e",
+    "copper": "#c9874f",
+    "board": "#1d1d1d",
+    "fwd": "#05a4bd",
+    "back": "#c434f4",
+}
+W = 8.0
+DPI = 200
+PILL = 13
+
+
+def style():
+    have = {f.name for f in font_manager.fontManager.ttflist}
+    sans = next((n for n in ("Helvetica Neue", "Helvetica", "Arial", "DejaVu Sans")
+                 if n in have), "sans-serif")
+    rcParams.update({
+        "font.family": "sans-serif", "font.sans-serif": [sans], "font.size": 11,
+        "text.color": C["ink"], "axes.labelcolor": C["muted"],
+        "xtick.color": C["muted"], "ytick.color": C["muted"],
+        "axes.edgecolor": C["grid"], "figure.dpi": DPI, "savefig.dpi": DPI,
+    })
+
+
+def ru(v: float, digits: int = 2, strip: bool = True) -> str:
+    """Comma decimal; a no-break space between thousands."""
+    text = f"{v:,.{digits}f}".replace(",", " ").replace(".", ",")
+    if strip and "," in text:
+        text = text.rstrip("0").rstrip(",")
+    return text
+
+
+def card(height: float, title: str, subtitle: str, legend=()):
+    fig = plt.figure(figsize=(W, height), facecolor="none")
+    fig.patches.append(FancyBboxPatch(
+        (0.004, 0.006), 0.992, 0.988, transform=fig.transFigure, zorder=-10,
+        boxstyle=f"round,pad=0,rounding_size={0.22 / height:.3f}",
+        facecolor=C["card"], edgecolor="none", mutation_aspect=W / height))
+    top = 1 - 0.42 / height
+    fig.text(0.055, top, title, fontsize=17, fontweight="bold", va="top")
+    fig.text(0.055, top - 0.36 / height, subtitle, fontsize=10.5,
+             color=C["muted"], va="top")
+    x = 0.055
+    for label, key in legend:
+        fig.text(x, top - 0.68 / height, "●", fontsize=12, color=C[key], va="top")
+        fig.text(x + 0.022, top - 0.685 / height, label, fontsize=10.5,
+                 color=C["muted"], va="top")
+        x += 0.045 + 0.0105 * len(label)
+    return fig
+
+
+def axes(fig, height: float, header: float):
+    ax = fig.add_axes([0.055, 0.35 / height, 0.89, 1 - (header + 0.5) / height])
+    ax.set_facecolor("none")
+    return ax
+
+
+def line_axes(fig, height: float, header: float):
+    ax = fig.add_axes([0.11, 0.85 / height, 0.82, 1 - (header + 1.0) / height])
+    ax.set_facecolor("none")
+    return ax
+
+
+def pill(ax, y, x0, x1, color, **kw):
+    ax.plot([x0, x1], [y, y], color=color, linewidth=PILL, solid_capstyle="round", **kw)
+
+
+def bare(ax):
+    for side in ax.spines.values():
+        side.set_visible(False)
+    ax.tick_params(which="both", length=0)
+
+
+def save(fig, name: str):
+    OUT.mkdir(exist_ok=True)
+    fig.savefig(OUT / name, transparent=True)
+    plt.close(fig)
+    print(f"  {name}")
+
+
+def cut_width(depth: float) -> float:
+    """win7/cam.go cutWidth: tip + 2 depth tan(angle / 2)."""
+    return TIP + 2 * depth * math.tan(math.radians(ANGLE / 2))
+
+
+# ==============================
+# ===  Dumped CAM data       ===
+# ==============================
+
+def load(name: str) -> dict:
+    return json.loads((DATA / name).read_text())
+
+
+def bits(r: dict) -> np.ndarray:
+    return np.frombuffer(base64.b64decode(r["Bits"]), np.uint8).reshape(r["H"], r["W"])
+
+
+def extent(r: dict):
+    return [r["X0"], r["X0"] + r["W"] * r["Px"], r["Y0"], r["Y0"] + r["H"] * r["Px"]]
+
+
+def copper_img(ax, r: dict, alpha=1.0):
+    cmap = LinearSegmentedColormap.from_list("cu", [C["board"], C["copper"]])
+    ax.imshow(bits(r), origin="lower", extent=extent(r), cmap=cmap, vmin=0, vmax=1,
+              interpolation="nearest", alpha=alpha)
+
+
+def paths_in(paths, box, ax, **kw):
+    x0, x1, y0, y1 = box
+    for p in paths:
+        p = np.array(p)
+        if p[:, 0].max() < x0 or p[:, 0].min() > x1 or p[:, 1].max() < y0 or p[:, 1].min() > y1:
+            continue
+        ax.plot(p[:, 0], p[:, 1], **kw)
+
+
+def panel(ax, box, label):
+    ax.set_xlim(box[0], box[1])
+    ax.set_ylim(box[2], box[3])
+    ax.set_aspect("equal")
+    ax.set_xticks([])
+    ax.set_yticks([])
+    for s in ax.spines.values():
+        s.set_color(C["grid"])
+    ax.set_title(label, fontsize=11, color=C["ink"], loc="left", pad=6)
+
+
+# ==============================
+# ===  The figures           ===
+# ==============================
+
+def fig_width():
+    """Why the height matters: the V-bit cuts wider the deeper it goes."""
+    h = 4.6
+    fig = card(h, "V-фреза режет шире, чем глубже",
+               f"Ширина реза фрезы {ru(TIP)} мм / {ru(ANGLE, 0)}° от глубины")
+    ax = line_axes(fig, h, 1.25)
+    d = np.linspace(0, 0.2, 100)
+    ax.plot(d, [cut_width(v) for v in d], color=C["mine"], lw=2.6, zorder=3)
+    for g, label in ((GAP_MIN, "наименьший зазор в правилах"),
+                     (GAP_ADVISED, "рекомендуемый зазор")):
+        ax.axhline(g, color=C["warn"] if g == GAP_MIN else C["muted"], lw=1.1,
+                   ls=(0, (4, 4)), zorder=2)
+        ax.text(0.003, g + 0.006, f"{label}, {ru(g)} мм", fontsize=9.5,
+                color=C["warn"] if g == GAP_MIN else C["muted"])
+    for v in (0.1, 0.15):
+        w = cut_width(v)
+        ax.scatter([v], [w], s=56, color=C["mine"], edgecolor=C["card"], lw=1.6, zorder=4)
+        ax.text(v + 0.004, w - 0.022, f"{ru(w, 3)} мм", fontsize=11.5, fontweight="bold",
+                color=C["mine"], ha="left")
+    ax.annotate("", xy=(0.15, cut_width(0.15)), xytext=(0.1, cut_width(0.1)),
+                arrowprops=dict(arrowstyle="->", color=C["muted"], lw=1))
+    ax.text(0.155, 0.125, "+0,05 мм по высоте\n≈ +0,04 мм ширины", fontsize=9.5,
+            color=C["muted"], ha="left", linespacing=1.25)
+    ax.set_xlim(0, 0.2)
+    ax.set_ylim(0.08, 0.34)
+    ax.set_xticks([0, 0.05, 0.1, 0.15, 0.2], ["0", "0,05", "0,1", "0,15", "0,2"])
+    ax.set_yticks([0.1, 0.15, 0.2, 0.25, 0.3], ["0,1", "0,15", "0,2", "0,25", "0,3"])
+    ax.set_xlabel("глубина реза, мм", fontsize=10)
+    ax.set_ylabel("ширина, мм", fontsize=10)
+    ax.grid(color=C["grid"], lw=0.8)
+    ax.set_axisbelow(True)
+    bare(ax)
+    save(fig, "width.png")
+
+
+def fig_pipeline():
+    """The four steps of the raster CAM on one corner of the test board."""
+    d = load("star.json")
+    cr = d["crop"]
+    box = extent(cr)
+    field = np.frombuffer(base64.b64decode(cr["Dist"]), "<u2").reshape(cr["H"], cr["W"])
+    mm = np.where(field == 65535, np.nan, field / 8.0 * cr["Px"])
+    half = d["cut"] / 2
+    h = 4.3
+    fig = card(h, "Как растровый CAM находит путь фрезы",
+               "Угол тестовой платы, 9 × 9 мм. Расчёт на сетке 0,01 мм, как в программе")
+    gs = fig.add_gridspec(1, 4, left=0.04, right=0.96, bottom=0.2, top=0.7, wspace=0.08)
+    a = [fig.add_subplot(gs[0, k]) for k in range(4)]
+    for ax in a:
+        ax.set_facecolor(C["board"])
+    copper_img(a[0], cr)
+    panel(a[0], box, "1. медь в пикселях")
+    cmap = LinearSegmentedColormap.from_list("fd", [C["board"], "#0b5563", C["mine"], "#bff3fb"])
+    a[1].imshow(np.minimum(mm, 0.5), origin="lower", extent=box, cmap=cmap, interpolation="bilinear")
+    panel(a[1], box, "2. расстояние до меди")
+    copper_img(a[2], cr, 0.55)
+    xs = np.linspace(box[0], box[1], cr["W"])
+    ys = np.linspace(box[2], box[3], cr["H"])
+    a[2].contour(xs, ys, np.nan_to_num(mm, nan=9), levels=[half, half + d["cut"] * 0.7],
+                 colors=[C["mine"]], linewidths=0.8)
+    panel(a[2], box, "3. линии равного\nрасстояния")
+    copper_img(a[3], cr)
+    paths_in(d["iso"], box, a[3], color=C["mine"], lw=0.8)
+    sh = [(p["X"], p["Y"]) for p in d["shorts"] or ()
+          if box[0] < p["X"] < box[1] and box[2] < p["Y"] < box[3]]
+    if sh:
+        s = np.array(sh)
+        a[3].scatter(s[:, 0], s[:, 1], s=60, facecolor="none", edgecolor=C["warn"], lw=1.6, zorder=5)
+    panel(a[3], box, "4. проходы и места\nуже реза")
+    fig.text(0.04, 0.095, f"Ширина реза {ru(d['cut'], 3)} мм. Первый проход идёт на половине ширины от меди, "
+             "второй дальше с перекрытием 30 %.", fontsize=9.5, color=C["muted"])
+    fig.text(0.04, 0.045, "Красные кольца: зазор уже реза, фреза между дорожками не пройдёт.",
+             fontsize=9.5, color=C["muted"])
+    save(fig, "pipeline.png")
+
+
+def fig_board():
+    """The whole test board with every isolation pass."""
+    d = load("star.json")
+    cu = d["copper"]
+    b = d["box"]
+    box = (b["X0"] - 1, b["X1"] + 1, b["Y0"] - 1, b["Y1"] + 1)
+    h = 6.6
+    fig = card(h, "Тестовая плата и проходы изоляции",
+               f"84 × 58 мм: {len(d['iso'])} проходов, {len(d['shorts'])} мест уже реза "
+               "(образцы нарушений правил задуманы)",
+               legend=(("медь", "copper"), ("путь фрезы", "mine"), ("зазор уже реза", "warn")))
+    ax = fig.add_axes([0.04, 0.03, 0.92, 0.78])
+    ax.set_facecolor(C["board"])
+    copper_img(ax, cu)
+    paths_in(d["iso"], box, ax, color=C["mine"], lw=0.35)
+    s = np.array([(p["X"], p["Y"]) for p in d["shorts"]])
+    ax.scatter(s[:, 0], s[:, 1], s=14, facecolor="none", edgecolor=C["warn"], lw=0.9, zorder=5)
+    ax.set_xlim(box[0], box[1])
+    ax.set_ylim(box[2], box[3])
+    ax.set_aspect("equal")
+    ax.axis("off")
+    save(fig, "board.png")
+
+
+def fig_first_map():
+    """The first real map: the blank is more than a millimetre off level."""
+    pts = np.array([list(map(float, l.split(","))) for l in
+                    (DATA / "first_map.csv").read_text().splitlines() if l and not l.startswith("#")])
+    xs, ys = np.unique(pts[:, 0]), np.unique(pts[:, 1])
+    z = np.full((len(ys), len(xs)), np.nan)
+    for x, y, v in pts:
+        z[np.searchsorted(ys, y), np.searchsorted(xs, x)] = v
+    span = np.nanmax(z) - np.nanmin(z)
+    h = 6.4
+    fig = card(h, f"Первая карта: перепад {ru(span, 2)} мм",
+               f"Настоящий обход станка, {len(pts)} касаний на заготовке "
+               f"{ru(xs[-1] - xs[0], 0)} × {ru(ys[-1] - ys[0], 0)} мм. Высота меди от первой точки, мм")
+    ax = fig.add_axes([0.2, 0.12, 0.6, 0.68])
+    cmap = LinearSegmentedColormap.from_list("h", ["#0b5563", C["mine"], "#e9d38c", C["warn"]])
+    ax.imshow(z, origin="lower", cmap=cmap, aspect="auto", interpolation="nearest")
+    for j in range(len(ys)):
+        for i in range(len(xs)):
+            v = z[j, i]
+            ax.text(i, j, ru(v, 2, strip=False).replace("-", "\u2212"), ha="center", va="center",
+                    fontsize=7.6, color="#111111" if v > 0.15 else C["ink"])
+    ax.set_xticks([0, len(xs) - 1], ["X 0", f"{ru(xs[-1], 0)} мм"])
+    ax.set_yticks([0, len(ys) - 1], ["Y 0", f"{ru(ys[-1], 0)} мм"])
+    bare(ax)
+    fig.text(0.055, 0.045, "Сколько здесь наклона заготовки, а сколько ухода Z за время обхода, "
+             "по одной карте не разделить.", fontsize=9.5, color=C["muted"])
+    save(fig, "firstmap.png")
+
+
+def fig_predict():
+    """Probing faster: approach the height the neighbours forecast."""
+    h = 5.2
+    fig = card(h, "Подлёт по прогнозу соседей",
+               "Сверху команд на одно касание (симулятор), снизу ошибка прогноза вверх (карта станка)")
+    ax = axes(fig, h, 1.25)
+    y = 4.2
+    ax.text(0, y - 0.15, "команд NcStudio на точку", fontsize=10, color=C["muted"])
+    for name, v, key in COMMANDS:
+        y -= 0.95
+        pill(ax, y, 0.01, 0.99, C["track"], zorder=2)
+        pill(ax, y, 0.01, 0.01 + 0.98 * v / 15, C[key], zorder=3)
+        ax.text(0, y + 0.27, name, fontsize=11.5, va="bottom")
+        ax.text(0.99, y + 0.27, ru(v, 1, strip=False), fontsize=13, fontweight="bold",
+                color=C[key] if key != "naive" else C["muted"], ha="right", va="bottom")
+    y -= 0.85
+    ax.text(0, y, "медь выше прогноза не больше чем на, мм", fontsize=10, color=C["muted"])
+    for name, v, key in FORECAST:
+        y -= 0.95
+        pill(ax, y, 0.01, 0.99, C["track"], zorder=2)
+        pill(ax, y, 0.01, 0.01 + 0.98 * v / 0.16, C[key], zorder=3)
+        ax.text(0, y + 0.27, name, fontsize=11.5, va="bottom")
+        ax.text(0.99, y + 0.27, ru(v, 2, strip=False), fontsize=13, fontweight="bold",
+                color=C[key] if key != "naive" else C["muted"], ha="right", va="bottom")
+    ax.set_xlim(-0.02, 1.02)
+    ax.set_ylim(y - 0.5, 4.3)
+    ax.axis("off")
+    save(fig, "predict.png")
+
+
+def fig_stages():
+    """Where the time of one board goes."""
+    h = 3.9
+    total = sum(v for _, v in STAGES)
+    fig = card(h, f"Плата за {total} минут работы станка",
+               "Тестовая плата 84 × 58 мм, время программ по расчёту. Без смены фрез и карты высот")
+    ax = axes(fig, h, 1.25)
+    for i, (name, v) in enumerate(reversed(STAGES)):
+        pill(ax, i, 0.01, 0.99, C["track"], zorder=2)
+        pill(ax, i, 0.01, 0.01 + 0.98 * v / 24, C["mine"], zorder=3)
+        ax.text(0, i + 0.27, name, fontsize=11.5, va="bottom")
+        ax.text(0.99, i + 0.27, f"{v} мин", fontsize=13, fontweight="bold",
+                color=C["mine"], ha="right", va="bottom")
+    ax.set_xlim(-0.02, 1.02)
+    ax.set_ylim(-0.5, 3.75)
+    ax.axis("off")
+    save(fig, "stages.png")
+
+
+def fig_cover():
+    """Feed cover, 780x440, full-bleed."""
+    d = load("star.json")
+    cr = d["crop"]
+    box = extent(cr)
+    fig = plt.figure(figsize=(7.8, 4.4), dpi=100, facecolor=C["card"])
+    ax = fig.add_axes([0.64, 0.0, 0.36, 1.0])
+    ax.set_facecolor(C["board"])
+    copper_img(ax, cr)
+    paths_in(d["iso"], box, ax, color=C["mine"], lw=1.4)
+    ax.set_xlim(box[0] + 1.9, box[1] - 1.9)
+    ax.set_ylim(box[2], box[3])
+    ax.axis("off")
+    fig.text(0.05, 0.84, "Свой CAM для фрезеровки", fontsize=22, fontweight="bold", va="top")
+    fig.text(0.05, 0.73, "плат под Windows 7", fontsize=22, fontweight="bold", va="top",
+             color=C["mine"])
+    fig.text(0.05, 0.56, "Gerber в программу без зависимостей,\nкарта высот самой фрезой,\n"
+             "станок без API и без щупа", fontsize=13.5, color=C["muted"], va="top", linespacing=1.4)
+    fig.text(0.05, 0.08, "дорожка и зазор 0,2 мм  ·  глубина 0,1 мм", fontsize=12,
+             color=C["ink"], va="bottom")
+    OUT.mkdir(exist_ok=True)
+    fig.savefig(OUT / "cover.png", dpi=100, facecolor=C["card"])
+    plt.close(fig)
+    print("  cover.png")
+
+
+def main():
+    style()
+    print(f"рисую в {OUT}")
+    for fig in (fig_width, fig_pipeline, fig_board, fig_first_map, fig_predict,
+                fig_stages, fig_cover):
+        fig()
+
+
+if __name__ == "__main__":
+    main()

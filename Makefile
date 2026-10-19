@@ -8,7 +8,7 @@ LOG     ?=
 DIALECT ?= grbl
 SIDE    ?= auto
 
-.PHONY: all rules rules-publish testboard install cam probe level show check selftest calib scan-demo win7 mac test clean
+.PHONY: all rules rules-publish testboard install cam probe level show check selftest calib scan-demo win7 mac article-figs test clean
 
 all: install
 
@@ -74,6 +74,11 @@ win7:             ## win7/pcbscan.exe for the NcStudio PC (Go 1.20, 32-bit, a wi
 mac:              ## win7/mac/: pcbscan for macOS (Apple Silicon) with two boards; opens in the browser, emulation is on
 	cd win7 && $(GO) test ./... && GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 $(GO) build -trimpath -o mac/pcbscan . && \
 		cp testdata/gerbers/2032Charger.zip mac/ && mkdir -p mac/eagle-demo && cp ../examples/gerbers/eagle/* mac/eagle-demo/
+
+article-figs:     ## рисунки статьи → docs/article/img/ (данные CAM снимает тест figdump_test.go)
+	cd win7 && FIG_OUT=../docs/article/data/star.json FIG_CROP=147.5,-134,156.5,-125 \
+		$(GO) test -tags figs -run FigDump .
+	$(PY) docs/article/figures.py
 
 test:             ## опасные программы ловятся, свои проходят, обход на симуляторе, сквозная цепочка
 	$(PY) tests/test_verify.py
