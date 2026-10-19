@@ -133,8 +133,8 @@ def slant(fig):
 
 # The card sits pressed into the grey: a dark inner shadow from the top left,
 # a faint light one from the bottom right.
-INSET = {"margin": 0.1, "radius": 0.2, "shift": 0.05, "blur": 0.07,
-         "dark": 0.75, "light": 0.07, "panel": "#141414"}
+INSET = {"margin": 0.1, "radius": 0.2, "shift": 0.1, "blur": 0.1,
+         "dark": 0.95, "light": 0.16, "panel": C["card"]}
 
 
 def inset(fig, dpi: int = DPI):
