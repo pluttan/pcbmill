@@ -75,9 +75,16 @@ mac:              ## win7/mac/: pcbscan for macOS (Apple Silicon) with two board
 	cd win7 && $(GO) test ./... && GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 $(GO) build -trimpath -o mac/pcbscan . && \
 		cp testdata/gerbers/2032Charger.zip mac/ && mkdir -p mac/eagle-demo && cp ../examples/gerbers/eagle/* mac/eagle-demo/
 
-article-figs:     ## рисунки статьи → docs/article/img/ (данные CAM снимает тест figdump_test.go)
+article-figs:     ## рисунки статьи → docs/article/img/ (данные и кадры снимают тесты win7/fig*_test.go)
 	cd win7 && FIG_OUT=../docs/article/data/star.json FIG_CROP=147.5,-134,156.5,-125 \
 		$(GO) test -tags figs -run FigDump .
+	cd win7 && FIG_MAP=../docs/article/data/first_map.csv FIG_OUT=../docs/article/img/firstmap.png \
+		FIG_SIZE=1440x900 $(GO) test -tags figs -run FigMap .
+	rm -rf docs/article/data/shots
+	cd win7 && PCBSCAN_SHOTS=../docs/article/data/shots PCBSCAN_SIZE=1440x900 \
+		$(GO) test -tags figs -run 'TestFigStages$$' .
+	for f in 01_programs 02_sheet 04_scan_running 05_map_result; do \
+		cp docs/article/data/shots/$$f.png docs/article/img/app_$${f#*_}.png; done
 	$(PY) docs/article/figures.py
 
 test:             ## опасные программы ловятся, свои проходят, обход на симуляторе, сквозная цепочка

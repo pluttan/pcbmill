@@ -52,8 +52,8 @@ COMMANDS = (("касание шагами от безопасной высоты
 FORECAST = (("ближайшая точка или прямая по двум", 0.15, "naive"),
             ("плоскость через 4 соседние точки", 0.03, "mine"))
 
-# kb pcbmill/machine-probes-testboard.md: the test board by the test, minutes.
-STAGES = (("изоляция", 18), ("окна маски", 22), ("сверловка", 3), ("V-рез", 6))
+# The "Программы листа" page of pcbscan for the test board (docs/article/img/app_programs.png), minutes.
+STAGES = (("изоляция", 18), ("вскрытие маски", 22), ("отверстия", 3), ("V-рез", 8))
 
 # kb pcbmill/gerber-cam-go.md: cut length of the isolation, mm, Go vs Python.
 AGAINST_PY = ((1291, 1293), (564, 563), (3329, 3328), (5813, 5813))
@@ -201,37 +201,36 @@ def panel(ax, box, label):
 # ==============================
 
 def fig_width():
-    """Why the height matters: the V-bit cuts wider the deeper it goes."""
-    h = 4.6
-    fig = card(h, "V-фреза режет шире, чем глубже",
-               f"Ширина реза фрезы {ru(TIP)} мм / {ru(ANGLE, 0)}° от глубины")
-    ax = line_axes(fig, h, 1.25)
-    d = np.linspace(0, 0.2, 100)
-    ax.plot(d, [cut_width(v) for v in d], color=C["mine"], lw=2.6, zorder=3)
-    for g, label in ((GAP_MIN, "наименьший зазор в правилах"),
-                     (GAP_ADVISED, "рекомендуемый зазор")):
-        ax.axhline(g, color=C["warn"] if g == GAP_MIN else C["muted"], lw=1.1,
-                   ls=(0, (4, 4)), zorder=2)
-        ax.text(0.003, g + 0.006, f"{label}, {ru(g)} мм", fontsize=9.5,
-                color=C["warn"] if g == GAP_MIN else C["muted"])
-    for v in (0.1, 0.15):
-        w = cut_width(v)
-        ax.scatter([v], [w], s=56, color=C["mine"], edgecolor=C["card"], lw=1.6, zorder=4)
-        ax.text(v + 0.004, w - 0.022, f"{ru(w, 3)} мм", fontsize=11.5, fontweight="bold",
-                color=C["mine"], ha="left")
-    ax.annotate("", xy=(0.15, cut_width(0.15)), xytext=(0.1, cut_width(0.1)),
-                arrowprops=dict(arrowstyle="->", color=C["muted"], lw=1))
-    ax.text(0.155, 0.125, "+0,05 мм по высоте\n≈ +0,04 мм ширины", fontsize=9.5,
-            color=C["muted"], ha="left", linespacing=1.25)
-    ax.set_xlim(0, 0.2)
-    ax.set_ylim(0.08, 0.34)
-    ax.set_xticks([0, 0.05, 0.1, 0.15, 0.2], ["0", "0,05", "0,1", "0,15", "0,2"])
-    ax.set_yticks([0.1, 0.15, 0.2, 0.25, 0.3], ["0,1", "0,15", "0,2", "0,25", "0,3"])
-    ax.set_xlabel("глубина реза, мм", fontsize=10)
-    ax.set_ylabel("ширина, мм", fontsize=10)
-    ax.grid(color=C["grid"], lw=0.8)
-    ax.set_axisbelow(True)
-    bare(ax)
+    """Why the height matters: a section through the V-bit, the width it cuts at each depth."""
+    h = 5.6
+    fig = card(h, "Чем глубже V-фреза, тем шире рез",
+               f"Разрез фрезы {ru(TIP)} мм / {ru(ANGLE, 0)}°. Справа ширина канавки на каждой глубине")
+    ax = fig.add_axes([0.04, 0.09, 0.92, 0.7])
+    ax.set_facecolor("none")
+    t = math.tan(math.radians(ANGLE / 2))
+    deep, top = 0.2, 0.1
+    ax.fill_between([-0.42, 0.42], -0.24, 0, color="#3a3324", lw=0, zorder=1)
+    ax.plot([-0.42, 0.42], [0, 0], color=C["copper"], lw=3, zorder=2)
+    ax.text(-0.415, 0.012, "поверхность меди", fontsize=10, color=C["copper"])
+    ax.text(-0.415, -0.232, "текстолит", fontsize=10, color=C["muted"])
+    xs = [-(TIP / 2 + (top + deep) * t), -TIP / 2, TIP / 2, TIP / 2 + (top + deep) * t]
+    ys = [top, -deep, -deep, top]
+    ax.fill(xs, ys, color="#8a8f98", alpha=0.3, lw=0, zorder=2)
+    ax.plot(xs, ys, color=C["ink"], lw=1.4, zorder=3)
+    for d, key in ((0.05, "naive"), (0.1, "mine"), (0.15, "warn")):
+        w = cut_width(d)
+        y = -d
+        ax.plot([-0.42, 0.42], [y, y], color=C["grid"], lw=0.8, ls=(0, (3, 3)), zorder=2)
+        ax.plot([-w / 2, w / 2], [y, y], color=C[key], lw=3.2, solid_capstyle="butt", zorder=4)
+        ax.text(-0.415, y + 0.007, f"глубина {ru(d, 2)} мм", fontsize=10, color=C["muted"])
+        ax.text(0.17, y + 0.007, f"ширина {ru(w, 3)} мм", fontsize=11.5, fontweight="bold",
+                color=C[key] if key != "naive" else C["ink"])
+    ax.set_xlim(-0.42, 0.42)
+    ax.set_ylim(-0.24, top)
+    ax.set_aspect("equal")
+    ax.axis("off")
+    fig.text(0.055, 0.035, "Ширина реза: кончик + 2 · глубина · tg(угол / 2). Мы режем на 0,1 мм.",
+             fontsize=9.5, color=C["muted"])
     save(fig, "width.png")
 
 
@@ -300,33 +299,24 @@ def fig_board():
     save(fig, "board.png")
 
 
-def fig_first_map():
-    """The first real map: the blank is more than a millimetre off level."""
-    pts = np.array([list(map(float, l.split(","))) for l in
-                    (DATA / "first_map.csv").read_text().splitlines() if l and not l.startswith("#")])
-    xs, ys = np.unique(pts[:, 0]), np.unique(pts[:, 1])
-    z = np.full((len(ys), len(xs)), np.nan)
-    for x, y, v in pts:
-        z[np.searchsorted(ys, y), np.searchsorted(xs, x)] = v
-    span = np.nanmax(z) - np.nanmin(z)
+def fig_stage_grid():
+    """The four cutting stages as pcbscan shows them: its own 3D view, cropped.
+    The frames come from win7/figstages_test.go (make article-figs)."""
+    from PIL import Image
+    shots = DATA / "shots"
+    names = (("06_stage_Фрезеровка.png", "фрезеровка дорожек"), ("07_stage_Маска.png", "вскрытие маски"),
+             ("08_stage_Сверловка.png", "отверстия фрезой 1 мм"), ("09_stage_V-рез.png", "V-рез по контуру"))
     h = 6.4
-    fig = card(h, f"Первая карта: перепад {ru(span, 2)} мм",
-               f"Настоящий обход станка, {len(pts)} касаний на заготовке "
-               f"{ru(xs[-1] - xs[0], 0)} × {ru(ys[-1] - ys[0], 0)} мм. Высота меди от первой точки, мм")
-    ax = fig.add_axes([0.2, 0.12, 0.6, 0.68])
-    cmap = LinearSegmentedColormap.from_list("h", ["#0b5563", C["mine"], "#e9d38c", C["warn"]])
-    ax.imshow(z, origin="lower", cmap=cmap, aspect="auto", interpolation="nearest")
-    for j in range(len(ys)):
-        for i in range(len(xs)):
-            v = z[j, i]
-            ax.text(i, j, ru(v, 2, strip=False).replace("-", "\u2212"), ha="center", va="center",
-                    fontsize=7.6, color="#111111" if v > 0.15 else C["ink"])
-    ax.set_xticks([0, len(xs) - 1], ["X 0", f"{ru(xs[-1], 0)} мм"])
-    ax.set_yticks([0, len(ys) - 1], ["Y 0", f"{ru(ys[-1], 0)} мм"])
-    bare(ax)
-    fig.text(0.055, 0.045, "Сколько здесь наклона заготовки, а сколько ухода Z за время обхода, "
-             "по одной карте не разделить.", fontsize=9.5, color=C["muted"])
-    save(fig, "firstmap.png")
+    fig = card(h, "Четыре этапа одного листа",
+               "Окно pcbscan в эмуляции, тестовая плата на листе 100 × 100 мм")
+    gs = fig.add_gridspec(2, 2, left=0.03, right=0.97, bottom=0.03, top=0.8, wspace=0.03, hspace=0.14)
+    for k, (f, label) in enumerate(names):
+        im = Image.open(shots / f).crop((700, 300, 1400, 740))
+        ax = fig.add_subplot(gs[k // 2, k % 2])
+        ax.imshow(im)
+        ax.set_title(label, fontsize=11, color=C["ink"], loc="left", pad=4)
+        ax.axis("off")
+    save(fig, "stages_grid.png")
 
 
 def fig_predict():
@@ -407,7 +397,7 @@ def fig_cover():
 def main():
     style()
     print(f"рисую в {OUT}")
-    for fig in (fig_width, fig_pipeline, fig_board, fig_first_map, fig_predict,
+    for fig in (fig_width, fig_pipeline, fig_board, fig_stage_grid, fig_predict,
                 fig_stages, fig_cover):
         fig()
 
