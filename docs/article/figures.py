@@ -475,7 +475,14 @@ def fig_cover():
     slant(fig)
     fig.savefig(OUT / "cover.png", dpi=300, facecolor=C["card"])
     plt.close(fig)
-    print("  cover.png")
+    # Habr takes a cover of 1 MB at most: a JPEG copy, the best quality that fits.
+    from PIL import Image
+    im = Image.open(OUT / "cover.png").convert("RGB")
+    for q in range(95, 60, -3):
+        im.save(OUT / "cover.jpg", quality=q, optimize=True)
+        if (OUT / "cover.jpg").stat().st_size <= 1_000_000:
+            break
+    print(f"  cover.png, cover.jpg (quality {q})")
 
 
 def hand_board():
