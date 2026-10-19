@@ -131,8 +131,43 @@ def slant(fig):
         t.set_path_effects([Slanted(e, SLANT) for e in effects])
 
 
+# The card sits pressed into the grey: a dark inner shadow from the top left,
+# a faint light one from the bottom right.
+INSET = {"margin": 0.1, "radius": 0.2, "shift": 0.05, "blur": 0.07,
+         "dark": 0.75, "light": 0.07, "panel": "#141414"}
+
+
+def inset(fig, dpi: int = DPI):
+    """Lay the pressed-in card under everything on the figure."""
+    from PIL import Image, ImageDraw, ImageFilter
+    w, h = (int(round(v * dpi)) for v in fig.get_size_inches())
+    m, r = (int(INSET[k] * dpi) for k in ("margin", "radius"))
+    d, b = (int(INSET[k] * dpi) for k in ("shift", "blur"))
+
+    def box(dx=0, dy=0):
+        im = Image.new("L", (w, h), 0)
+        ImageDraw.Draw(im).rounded_rectangle((m + dx, m + dy, w - m + dx, h - m + dy), r, fill=255)
+        return im
+
+    panel = np.asarray(box(), float) / 255
+    # Inside the panel, where the edge shifted away leaves a gap, the shadow falls.
+    dark = np.asarray(box(d, d).filter(ImageFilter.GaussianBlur(b)), float) / 255
+    light = np.asarray(box(-d, -d).filter(ImageFilter.GaussianBlur(b)), float) / 255
+    dark = (1 - dark) * panel * INSET["dark"]
+    light = (1 - light) * panel * INSET["light"]
+    rgb = lambda c: np.array([int(c[i:i + 2], 16) for i in (1, 3, 5)], float) / 255
+    ground = rgb(C["card"]) * (1 - panel[..., None]) + rgb(INSET["panel"]) * panel[..., None]
+    ground = ground * (1 - dark[..., None]) + light[..., None] * (1 - ground)
+    ax = fig.add_axes([0, 0, 1, 1], zorder=-100)
+    ax.imshow(np.clip(ground, 0, 1), extent=(0, 1, 0, 1), aspect="auto", interpolation="none")
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.axis("off")
+
+
 def card(height: float, title: str, subtitle: str, legend=()):
     fig = plt.figure(figsize=(W, height), facecolor=C["card"])
+    inset(fig)
     top = 1 - 0.42 / height
     fig.text(0.055, top + 0.04 / height, title, fontsize=21, va="top", **TITLE)
     fig.text(0.055, top - 0.42 / height, subtitle, fontsize=10.5,
@@ -419,6 +454,7 @@ def fig_cover():
     board = np.asarray(board_photo(), float) / 255
     bh, bw = board.shape[:2]
     fig = plt.figure(figsize=(7.8, 4.4), dpi=100, facecolor=C["card"])
+    inset(fig, 200)
     h = 270 / 440
     w = h * 440 * bw / bh / 780
     ax = fig.add_axes([1 - w - 30 / 780, (1 - h) / 2, w, h])
