@@ -7,8 +7,9 @@ of distances, the isolation passes and the shorts into data/*.json. The rest
 are measurements copied from the notes that recorded them, named next to each
 constant, so the text and the pictures read the same numbers.
 
-Each figure is a self-contained card in Habr's dark colours (#262626), filled
-edge to edge.
+Each figure is a self-contained card, filled edge to edge: a neutral dark grey
+ground, the Catppuccin Mocha colours on it and the GOST Type BU font
+(docs/fonts/GOSTtypeB.ttf).
 
 Run:  make article-figs   ->  docs/article/img/*.png
 
@@ -61,18 +62,18 @@ AGAINST_PY = ((1291, 1293), (564, 563), (3329, 3328), (5813, 5813))
 # ==============================
 
 C = {
-    "card": "#262626",     # Habr dark --background-secondary
-    "ink": "#dedede",      # --text-main
-    "muted": "#ababab",    # --text-secondary
+    "card": "#242424",     # neutral dark grey, no blue in it
+    "ink": "#cdd6f4",      # Catppuccin Mocha: Text
+    "muted": "#a6adc8",    # Subtext 0
     "track": "#333333",
-    "grid": "#383838",
-    "mine": "#05a4bd",     # tool paths, my side of a comparison
-    "warn": "#f0503c",     # shorts, the edge of the rules
-    "naive": "#6e6e6e",
-    "copper": "#c9874f",
-    "board": "#1d1d1d",
-    "fwd": "#05a4bd",
-    "back": "#c434f4",
+    "grid": "#3a3a3a",
+    "mine": "#74c7ec",     # Sapphire: tool paths, my side of a comparison
+    "warn": "#f38ba8",     # Red: shorts, the edge of the rules
+    "naive": "#6c7086",    # Overlay 0
+    "copper": "#fab387",   # Peach
+    "board": "#1a1a1a",
+    "fwd": "#74c7ec",      # Sapphire
+    "back": "#cba6f7",     # Mauve
 }
 W = 8.0
 DPI = 200
@@ -80,11 +81,9 @@ PILL = 13
 
 
 def style():
-    have = {f.name for f in font_manager.fontManager.ttflist}
-    sans = next((n for n in ("Helvetica Neue", "Helvetica", "Arial", "DejaVu Sans")
-                 if n in have), "sans-serif")
+    font_manager.fontManager.addfont(str(HERE.parent / "fonts" / "GOSTtypeB.ttf"))
     rcParams.update({
-        "font.family": "sans-serif", "font.sans-serif": [sans], "font.size": 11,
+        "font.family": "GOST Type BU", "font.size": 11,
         "text.color": C["ink"], "axes.labelcolor": C["muted"],
         "xtick.color": C["muted"], "ytick.color": C["muted"],
         "axes.edgecolor": C["grid"], "figure.dpi": DPI, "savefig.dpi": DPI,
@@ -107,7 +106,7 @@ def card(height: float, title: str, subtitle: str, legend=()):
              color=C["muted"], va="top")
     x = 0.055
     for label, key in legend:
-        fig.text(x, top - 0.68 / height, "●", fontsize=12, color=C[key], va="top")
+        fig.text(x, top - 0.68 / height, "●", fontsize=12, color=C[key], va="top", family="DejaVu Sans")
         fig.text(x + 0.022, top - 0.685 / height, label, fontsize=10.5,
                  color=C["muted"], va="top")
         x += 0.045 + 0.0105 * len(label)
@@ -203,7 +202,7 @@ def fig_width():
     t = math.tan(math.radians(ANGLE / 2))
     cu, half, top, low = 0.035, 0.19, 0.16, -0.2
     # Two colours for the material, white for the marks.
-    FR4, CU = "#353535", "#d4864a"
+    FR4, CU = "#353535", C["copper"]
     for i, d in enumerate((0.05, 0.1, 0.15)):
         ax = fig.add_axes([0.035 + i * 0.315, 0.04, 0.3, 0.7])
         ax.set_facecolor("none")
@@ -252,7 +251,7 @@ def fig_pipeline():
         ax.set_facecolor(C["board"])
     copper_img(a[0], cr)
     panel(a[0], box, "1. медь в пикселях")
-    cmap = LinearSegmentedColormap.from_list("fd", [C["board"], "#0b5563", C["mine"], "#bff3fb"])
+    cmap = LinearSegmentedColormap.from_list("fd", [C["board"], "#24485a", C["mine"], "#dcf2fb"])
     a[1].imshow(np.minimum(mm, 0.5), origin="lower", extent=box, cmap=cmap, interpolation="bilinear")
     panel(a[1], box, "2. расстояние до меди")
     copper_img(a[2], cr, 0.55)
@@ -390,7 +389,7 @@ def board_photo():
         b.append(v)
     coef = np.linalg.solve(np.array(a, float), np.array(b, float))
     board = im.transform((w, h), Image.PERSPECTIVE, tuple(coef), Image.BICUBIC)
-    return board.crop((70, 6, 1640, h - 6))
+    return board.crop((48, 4, 1650, h - 4))
 
 
 def fig_cover():
@@ -410,7 +409,7 @@ def fig_cover():
              color=C["muted"], va="top", linespacing=1.45)
     fig.text(0.05, 0.1, "дорожка и зазор 0,2 мм", fontsize=12, color=C["ink"], va="bottom")
     OUT.mkdir(exist_ok=True)
-    fig.savefig(OUT / "cover.png", dpi=100, facecolor=C["card"])
+    fig.savefig(OUT / "cover.png", dpi=200, facecolor=C["card"])
     plt.close(fig)
     print("  cover.png")
 
