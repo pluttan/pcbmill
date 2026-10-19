@@ -131,9 +131,10 @@ def slant(fig):
         t.set_path_effects([Slanted(e, SLANT) for e in effects])
 
 
-# The field of the card is pressed in: darker than the Habr grey, a soft inner shadow from the top left.
-INSET = {"margin": 0.1, "radius": 0.2, "shift": 0.05, "blur": 0.08,
-         "dark": 0.55, "light": 0.0, "panel": "#040404"}  # the pressed-in field
+# The field of the card is pressed in: darker than the Habr grey, in shade at the top left,
+# the grey coming back softly at the bottom right.
+INSET = {"margin": 0.1, "radius": 0.2, "shift": 0.06, "blur": 0.1,
+         "dark": 1.0, "light": 0.85, "panel": "#040404"}  # the pressed-in field
 
 
 def inset(fig, dpi: int = DPI):
@@ -156,7 +157,9 @@ def inset(fig, dpi: int = DPI):
     light = (1 - light) * panel * INSET["light"]
     rgb = lambda c: np.array([int(c[i:i + 2], 16) for i in (1, 3, 5)], float) / 255
     ground = rgb(C["card"]) * (1 - panel[..., None]) + rgb(INSET["panel"]) * panel[..., None]
-    ground = ground * (1 - dark[..., None]) + light[..., None] * (1 - ground)
+    # The shade goes to black, the far edge back to the grey round the card.
+    ground = ground * (1 - dark[..., None])
+    ground = ground * (1 - light[..., None]) + rgb(C["card"]) * light[..., None]
     ax = fig.add_axes([0, 0, 1, 1], zorder=-100)
     ax.imshow(np.clip(ground, 0, 1), extent=(0, 1, 0, 1), aspect="auto", interpolation="none")
     ax.set_xlim(0, 1)
