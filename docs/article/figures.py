@@ -85,7 +85,8 @@ PILL = 13
 
 
 def style():
-    font_manager.fontManager.addfont(str(HERE.parent / "fonts" / "GOSTtypeB.ttf"))
+    for name in ("GOSTtypeB.ttf", "Exo2-Bold.ttf"):
+        font_manager.fontManager.addfont(str(HERE.parent / "fonts" / name))
     rcParams.update({
         "font.family": "GOST Type BU", "font.size": 11,
         "text.color": C["ink"], "axes.labelcolor": C["muted"],
@@ -102,9 +103,8 @@ def ru(v: float, digits: int = 2, strip: bool = True) -> str:
     return text
 
 
-def bold(color: str, width: float = 1.0):
-    """Thicken a large GOST line: the font has no bold face, thin strokes break up."""
-    return [patheffects.withStroke(linewidth=width, foreground=color)]
+# Titles in Exo 2 Bold (OFL, docs/fonts/Exo2-OFL.txt), upright; the rest in slanted GOST.
+TITLE = {"family": "Exo 2", "fontweight": "bold", "gid": "title"}
 
 
 class Slanted(patheffects.AbstractPathEffect):
@@ -125,7 +125,7 @@ SLANT = 15
 def slant(fig):
     """Lean every text of the figure; lines and pictures stay upright."""
     for t in fig.findobj(Text):
-        if t.get_text() == "●":
+        if t.get_text() == "●" or t.get_gid() == "title":
             continue
         effects = t.get_path_effects() or [patheffects.Normal()]
         t.set_path_effects([Slanted(e, SLANT) for e in effects])
@@ -134,7 +134,7 @@ def slant(fig):
 def card(height: float, title: str, subtitle: str, legend=()):
     fig = plt.figure(figsize=(W, height), facecolor=C["card"])
     top = 1 - 0.42 / height
-    fig.text(0.055, top, title, fontsize=17, va="top", path_effects=bold(C["ink"]))
+    fig.text(0.055, top, title, fontsize=17, va="top", **TITLE)
     fig.text(0.055, top - 0.36 / height, subtitle, fontsize=10.5,
              color=C["muted"], va="top")
     x = 0.055
@@ -429,7 +429,7 @@ def fig_cover():
     ax.axis("off")
     for y, line, color in ((0.84, "Свой CAM", C["ink"]), (0.72, "для фрезеровки", C["ink"]),
                            (0.60, "плат", C["mine"])):
-        fig.text(0.05, y, line, fontsize=21, va="top", color=color, path_effects=bold(color, 1.2))
+        fig.text(0.05, y, line, fontsize=22, va="top", color=color, **TITLE)
     fig.text(0.05, 0.40, "Windows 7, станок без API,\nкарта высот самой фрезой", fontsize=12.5,
              color=C["muted"], va="top", linespacing=1.45)
     fig.text(0.05, 0.1, "дорожка и зазор 0,2 мм", fontsize=12, color=C["ink"], va="bottom")
