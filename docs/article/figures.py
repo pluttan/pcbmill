@@ -85,7 +85,7 @@ PILL = 13
 
 
 def style():
-    for name in ("GOSTtypeB.ttf", "Exo2-Bold.ttf"):
+    for name in ("GOSTtypeB.ttf", "Exo2-BoldItalic.ttf"):
         font_manager.fontManager.addfont(str(HERE.parent / "fonts" / name))
     rcParams.update({
         "font.family": "GOST Type BU", "font.size": 11,
@@ -103,8 +103,8 @@ def ru(v: float, digits: int = 2, strip: bool = True) -> str:
     return text
 
 
-# Titles in Exo 2 Bold (OFL, docs/fonts/Exo2-OFL.txt), upright; the rest in slanted GOST.
-TITLE = {"family": "Exo 2", "fontweight": "bold", "gid": "title"}
+# Titles in Exo 2 Bold Italic (OFL, docs/fonts/Exo2-OFL.txt); the rest in slanted GOST.
+TITLE = {"family": "Exo 2", "fontweight": "bold", "fontstyle": "italic", "gid": "title"}
 
 
 class Slanted(patheffects.AbstractPathEffect):
@@ -134,8 +134,8 @@ def slant(fig):
 def card(height: float, title: str, subtitle: str, legend=()):
     fig = plt.figure(figsize=(W, height), facecolor=C["card"])
     top = 1 - 0.42 / height
-    fig.text(0.055, top, title, fontsize=17, va="top", **TITLE)
-    fig.text(0.055, top - 0.36 / height, subtitle, fontsize=10.5,
+    fig.text(0.055, top + 0.04 / height, title, fontsize=21, va="top", **TITLE)
+    fig.text(0.055, top - 0.42 / height, subtitle, fontsize=10.5,
              color=C["muted"], va="top")
     x = 0.055
     for label, key in legend:
@@ -419,7 +419,7 @@ def fig_cover():
     board = np.asarray(board_photo(), float) / 255
     bh, bw = board.shape[:2]
     fig = plt.figure(figsize=(7.8, 4.4), dpi=100, facecolor=C["card"])
-    h = 300 / 440
+    h = 270 / 440
     w = h * 440 * bw / bh / 780
     ax = fig.add_axes([1 - w - 30 / 780, (1 - h) / 2, w, h])
     im = ax.imshow(board, interpolation="lanczos")
@@ -429,7 +429,7 @@ def fig_cover():
     ax.axis("off")
     for y, line, color in ((0.84, "Свой CAM", C["ink"]), (0.72, "для фрезеровки", C["ink"]),
                            (0.60, "плат", C["mine"])):
-        fig.text(0.05, y, line, fontsize=22, va="top", color=color, **TITLE)
+        fig.text(0.05, y, line, fontsize=27, va="top", color=color, **TITLE)
     fig.text(0.05, 0.40, "Windows 7, станок без API,\nкарта высот самой фрезой", fontsize=12.5,
              color=C["muted"], va="top", linespacing=1.45)
     fig.text(0.05, 0.1, "дорожка и зазор 0,2 мм", fontsize=12, color=C["ink"], va="bottom")
