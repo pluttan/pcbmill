@@ -202,16 +202,16 @@ def panel(ax, box, label):
 
 def fig_width():
     """Why the height matters: the V-bit at three depths, the groove it leaves at the copper surface."""
-    h = 5.0
+    h = 4.6
     fig = card(h, "Чем глубже V-фреза, тем шире рез",
                f"Разрез фрезы: кончик {ru(TIP)} мм, угол {ru(ANGLE, 0)}°. "
                "Ширина канавки отмерена по поверхности меди")
     t = math.tan(math.radians(ANGLE / 2))
     cu, half, top, low = 0.035, 0.19, 0.16, -0.2
-    # Two colours for the material, white for the marks; only the working depth in accent.
+    # Two colours for the material, white for the marks.
     FR4, CU = "#353535", "#d4864a"
     for i, d in enumerate((0.05, 0.1, 0.15)):
-        ax = fig.add_axes([0.035 + i * 0.315, 0.1, 0.3, 0.7])
+        ax = fig.add_axes([0.035 + i * 0.315, 0.04, 0.3, 0.7])
         ax.set_facecolor("none")
         w = cut_width(d)
         color = C["ink"]
@@ -242,10 +242,6 @@ def fig_width():
         ax.set_ylim(low - 0.07, top)
         ax.set_aspect("equal")
         ax.axis("off")
-    fig.text(0.055, 0.05, "медь", fontsize=10, color=CU)
-    fig.text(0.11, 0.05, "текстолит", fontsize=10, color=C["muted"])
-    fig.text(0.945, 0.05, "Изоляция режет на глубине 0,1 мм", ha="right",
-             fontsize=10, color=C["muted"])
     save(fig, "width.png")
 
 
