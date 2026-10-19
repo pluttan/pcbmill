@@ -371,26 +371,44 @@ def fig_stages():
     save(fig, "stages.png")
 
 
+def board_photo():
+    """The test board from photos/testboard-hand.jpg, squared to 84 x 58 mm.
+
+    The corners were read off the photo by eye. The fingers reach over the left
+    and the right edge, so a strip on both sides is cut away.
+    """
+    from PIL import Image
+    im = Image.open(HERE / "photos" / "testboard-hand.jpg").convert("RGB")
+    src = [(103, 362), (978, 357), (996, 962), (101, 978)]
+    w, h = 1680, 1160
+    dst = [(0, 0), (w, 0), (w, h), (0, h)]
+    a, b = [], []
+    for (x, y), (u, v) in zip(dst, src):
+        a.append([x, y, 1, 0, 0, 0, -u * x, -u * y])
+        b.append(u)
+        a.append([0, 0, 0, x, y, 1, -v * x, -v * y])
+        b.append(v)
+    coef = np.linalg.solve(np.array(a, float), np.array(b, float))
+    board = im.transform((w, h), Image.PERSPECTIVE, tuple(coef), Image.BICUBIC)
+    return board.crop((70, 6, 1640, h - 6))
+
+
 def fig_cover():
-    """Feed cover, 780x440, full-bleed."""
-    d = load("star.json")
-    cr = d["crop"]
-    box = extent(cr)
+    """Feed cover, 780x440: the test board whole on the right, the title on the left."""
+    board = np.asarray(board_photo(), float) / 255
+    bh, bw = board.shape[:2]
     fig = plt.figure(figsize=(7.8, 4.4), dpi=100, facecolor=C["card"])
-    ax = fig.add_axes([0.64, 0.0, 0.36, 1.0])
-    ax.set_facecolor(C["board"])
-    copper_img(ax, cr)
-    paths_in(d["iso"], box, ax, color=C["mine"], lw=1.4)
-    ax.set_xlim(box[0] + 1.9, box[1] - 1.9)
-    ax.set_ylim(box[2], box[3])
+    h = 290 / 440
+    w = h * 440 * bw / bh / 780
+    ax = fig.add_axes([1 - w - 30 / 780, (1 - h) / 2, w, h])
+    ax.imshow(board, interpolation="lanczos")
     ax.axis("off")
-    fig.text(0.05, 0.84, "Свой CAM для фрезеровки", fontsize=22, fontweight="bold", va="top")
-    fig.text(0.05, 0.73, "плат под Windows 7", fontsize=22, fontweight="bold", va="top",
-             color=C["mine"])
-    fig.text(0.05, 0.56, "Gerber в программу без зависимостей,\nкарта высот самой фрезой,\n"
-             "станок без API и без щупа", fontsize=13.5, color=C["muted"], va="top", linespacing=1.4)
-    fig.text(0.05, 0.08, "дорожка и зазор 0,2 мм  ·  глубина 0,1 мм", fontsize=12,
-             color=C["ink"], va="bottom")
+    fig.text(0.05, 0.84, "Свой CAM", fontsize=21, fontweight="bold", va="top")
+    fig.text(0.05, 0.72, "для фрезеровки", fontsize=21, fontweight="bold", va="top")
+    fig.text(0.05, 0.60, "плат", fontsize=21, fontweight="bold", va="top", color=C["mine"])
+    fig.text(0.05, 0.40, "Windows 7, станок без API,\nкарта высот самой фрезой", fontsize=12.5,
+             color=C["muted"], va="top", linespacing=1.45)
+    fig.text(0.05, 0.1, "дорожка и зазор 0,2 мм", fontsize=12, color=C["ink"], va="bottom")
     OUT.mkdir(exist_ok=True)
     fig.savefig(OUT / "cover.png", dpi=100, facecolor=C["card"])
     plt.close(fig)
