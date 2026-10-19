@@ -66,11 +66,11 @@ AGAINST_PY = ((1291, 1293), (564, 563), (3329, 3328), (5813, 5813))
 # ==============================
 
 C = {
-    "card": "#040404",     # the ground round the card
+    "card": "#171717",     # Habr dark --background-primary, hsl(0, 0%, 9%)
     "ink": "#cdd6f4",      # Catppuccin Mocha: Text
     "muted": "#a6adc8",    # Subtext 0
-    "track": "#262626",
-    "grid": "#2e2e2e",
+    "track": "#1c1c1c",
+    "grid": "#242424",
     "mine": "#74c7ec",     # Sapphire: tool paths, my side of a comparison
     "warn": "#f38ba8",     # Red: shorts, the edge of the rules
     "naive": "#6c7086",    # Overlay 0
@@ -131,9 +131,9 @@ def slant(fig):
         t.set_path_effects([Slanted(e, SLANT) for e in effects])
 
 
-# The card sits pressed into the dark ground: a soft inner shadow from the top left.
+# The field of the card is pressed in: darker than the Habr grey, a soft inner shadow from the top left.
 INSET = {"margin": 0.1, "radius": 0.2, "shift": 0.05, "blur": 0.08,
-         "dark": 0.55, "light": 0.0, "panel": "#171717"}  # panel: Habr dark --background-primary
+         "dark": 0.55, "light": 0.0, "panel": "#040404"}  # the pressed-in field
 
 
 def inset(fig, dpi: int = DPI):
@@ -270,7 +270,7 @@ def fig_width():
     t = math.tan(math.radians(ANGLE / 2))
     cu, half, top, low = 0.035, 0.19, 0.16, -0.2
     # Two colours for the material, white for the marks.
-    FR4, CU = "#2b2b2b", C["copper"]
+    FR4, CU = "#222222", C["copper"]
     for i, d in enumerate((0.05, 0.1, 0.15)):
         ax = fig.add_axes([0.035 + i * 0.315, 0.04, 0.3, 0.7])
         ax.set_facecolor("none")
