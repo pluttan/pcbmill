@@ -80,7 +80,7 @@ C = {
     "back": "#cba6f7",     # Mauve
 }
 W = 8.0
-DPI = 200
+DPI = 300
 PILL = 13
 
 
@@ -456,7 +456,7 @@ def fig_cover():
     board = np.asarray(board_photo(), float) / 255
     bh, bw = board.shape[:2]
     fig = plt.figure(figsize=(7.8, 4.4), dpi=100, facecolor=C["card"])
-    inset(fig, 200)
+    inset(fig, 300)
     h = 270 / 440
     w = h * 440 * bw / bh / 780
     ax = fig.add_axes([1 - w - 30 / 780, (1 - h) / 2, w, h])
@@ -473,7 +473,7 @@ def fig_cover():
     fig.text(0.05, 0.1, "дорожка и зазор 0,2 мм", fontsize=12, color=C["ink"], va="bottom")
     OUT.mkdir(exist_ok=True)
     slant(fig)
-    fig.savefig(OUT / "cover.png", dpi=200, facecolor=C["card"])
+    fig.savefig(OUT / "cover.png", dpi=300, facecolor=C["card"])
     plt.close(fig)
     print("  cover.png")
 
