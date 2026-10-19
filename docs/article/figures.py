@@ -322,7 +322,7 @@ def fig_pipeline():
         ax.set_facecolor(C["board"])
     copper_img(a[0], cr)
     panel(a[0], box, "1. медь в пикселях")
-    cmap = LinearSegmentedColormap.from_list("fd", [C["board"], "#24485a", C["mine"], "#dcf2fb"])
+    cmap = LinearSegmentedColormap.from_list("fd", [C["board"], C["mine"], "#89dceb"])  # to Sapphire, then Sky
     a[1].imshow(np.minimum(mm, 0.5), origin="lower", extent=box, cmap=cmap, interpolation="bilinear")
     panel(a[1], box, "2. расстояние до меди")
     copper_img(a[2], cr, 0.55)
