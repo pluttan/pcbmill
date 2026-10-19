@@ -66,16 +66,16 @@ AGAINST_PY = ((1291, 1293), (564, 563), (3329, 3328), (5813, 5813))
 # ==============================
 
 C = {
-    "card": "#242424",     # neutral dark grey, no blue in it
+    "card": "#171717",     # Habr dark --background-primary, hsl(0, 0%, 9%)
     "ink": "#cdd6f4",      # Catppuccin Mocha: Text
     "muted": "#a6adc8",    # Subtext 0
-    "track": "#333333",
-    "grid": "#3a3a3a",
+    "track": "#262626",
+    "grid": "#2e2e2e",
     "mine": "#74c7ec",     # Sapphire: tool paths, my side of a comparison
     "warn": "#f38ba8",     # Red: shorts, the edge of the rules
     "naive": "#6c7086",    # Overlay 0
     "copper": "#fab387",   # Peach
-    "board": "#1a1a1a",
+    "board": "#0e0e0e",
     "fwd": "#74c7ec",      # Sapphire
     "back": "#cba6f7",     # Mauve
 }
@@ -236,7 +236,7 @@ def fig_width():
     t = math.tan(math.radians(ANGLE / 2))
     cu, half, top, low = 0.035, 0.19, 0.16, -0.2
     # Two colours for the material, white for the marks.
-    FR4, CU = "#353535", C["copper"]
+    FR4, CU = "#2b2b2b", C["copper"]
     for i, d in enumerate((0.05, 0.1, 0.15)):
         ax = fig.add_axes([0.035 + i * 0.315, 0.04, 0.3, 0.7])
         ax.set_facecolor("none")
