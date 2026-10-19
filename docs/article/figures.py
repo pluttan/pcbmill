@@ -509,31 +509,46 @@ PHOTOS = (
 )
 
 
-def fig_photos():
-    """Each photo on the grey ground alone, its corners round."""
+# Window shots of pcbscan in the article, framed like the photos and kept as PNG.
+SCREENS = ("app_programs", "app_scan_running", "firstmap")
+
+
+def framed(im, out: str, jpeg: bool):
+    """Lay a picture on the grey ground alone, its corners round."""
     from PIL import Image
     pad = 0.12
+    ph = np.asarray(im, float) / 255
+    h, w = ph.shape[:2]
+    side = INSET["margin"] + pad
+    width = 7.0
+    height = (width - 2 * side) * h / w + 2 * side
+    fig = plt.figure(figsize=(width, height), facecolor=C["card"])
+    ax = fig.add_axes([side / width, side / height, 1 - 2 * side / width, 1 - 2 * side / height])
+    shown = ax.imshow(ph, interpolation="lanczos")
+    shown.set_clip_path(FancyBboxPatch((-0.5, -0.5), w, h, transform=ax.transData,
+                                       boxstyle=f"round,pad=0,rounding_size={min(w, h) * 0.025:.0f}"))
+    ax.axis("off")
+    OUT.mkdir(exist_ok=True)
+    tmp = OUT / f"_{out}.png"
+    fig.savefig(tmp, facecolor=C["card"])
+    plt.close(fig)
+    if jpeg:
+        Image.open(tmp).convert("RGB").save(OUT / f"{out}.jpg", quality=90)
+        tmp.unlink()
+    else:
+        tmp.rename(OUT / f"{out}.png")
+    print(f"  {out}")
+
+
+def fig_photos():
+    """The photos and the window shots of the article, framed."""
+    from PIL import Image
     for name, box in PHOTOS:
         im = hand_board() if box is None else \
             Image.open(HERE / "photos" / f"{name}.jpg").convert("RGB").crop(box)
-        ph = np.asarray(im, float) / 255
-        h, w = ph.shape[:2]
-        side = INSET["margin"] + pad
-        width = 7.0
-        height = (width - 2 * side) * h / w + 2 * side
-        fig = plt.figure(figsize=(width, height), facecolor=C["card"])
-        ax = fig.add_axes([side / width, side / height, 1 - 2 * side / width, 1 - 2 * side / height])
-        shown = ax.imshow(ph, interpolation="lanczos")
-        shown.set_clip_path(FancyBboxPatch((-0.5, -0.5), w, h, transform=ax.transData,
-                                           boxstyle=f"round,pad=0,rounding_size={min(w, h) * 0.025:.0f}"))
-        ax.axis("off")
-        OUT.mkdir(exist_ok=True)
-        tmp = OUT / f"photo-{name}.png"
-        fig.savefig(tmp, facecolor=C["card"])
-        plt.close(fig)
-        Image.open(tmp).convert("RGB").save(OUT / f"photo-{name}.jpg", quality=90)
-        tmp.unlink()
-        print(f"  photo-{name}.jpg")
+        framed(im, f"photo-{name}", jpeg=True)
+    for name in SCREENS:
+        framed(Image.open(OUT / f"{name}.png").convert("RGB"), f"frame-{name}", jpeg=False)
 
 
 def main():
