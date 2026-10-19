@@ -66,7 +66,7 @@ AGAINST_PY = ((1291, 1293), (564, 563), (3329, 3328), (5813, 5813))
 # ==============================
 
 C = {
-    "card": "#171717",     # Habr dark --background-primary, hsl(0, 0%, 9%)
+    "card": "#040404",     # the ground round the card
     "ink": "#cdd6f4",      # Catppuccin Mocha: Text
     "muted": "#a6adc8",    # Subtext 0
     "track": "#262626",
@@ -131,10 +131,9 @@ def slant(fig):
         t.set_path_effects([Slanted(e, SLANT) for e in effects])
 
 
-# The card sits pressed into the grey: a dark inner shadow from the top left,
-# a faint light one from the bottom right.
-INSET = {"margin": 0.1, "radius": 0.2, "shift": 0.1, "blur": 0.1,
-         "dark": 0.95, "light": 0.16, "panel": C["card"]}
+# The card sits pressed into the dark ground: a soft inner shadow from the top left.
+INSET = {"margin": 0.1, "radius": 0.2, "shift": 0.05, "blur": 0.08,
+         "dark": 0.55, "light": 0.0, "panel": "#171717"}  # panel: Habr dark --background-primary
 
 
 def inset(fig, dpi: int = DPI):
