@@ -7,9 +7,8 @@ of distances, the isolation passes and the shorts into data/*.json. The rest
 are measurements copied from the notes that recorded them, named next to each
 constant, so the text and the pictures read the same numbers.
 
-Each figure is a self-contained card in Habr's dark colours (#262626) with
-transparent corners: Habr follows the reader's system theme, so the card has
-to sit on white and on near-black alike.
+Each figure is a self-contained card in Habr's dark colours (#262626), filled
+edge to edge.
 
 Run:  make article-figs   ->  docs/article/img/*.png
 
@@ -30,7 +29,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import font_manager, rcParams
 from matplotlib.colors import LinearSegmentedColormap
-from matplotlib.patches import FancyBboxPatch
 
 HERE = Path(__file__).resolve().parent
 OUT = HERE / "img"
@@ -102,11 +100,7 @@ def ru(v: float, digits: int = 2, strip: bool = True) -> str:
 
 
 def card(height: float, title: str, subtitle: str, legend=()):
-    fig = plt.figure(figsize=(W, height), facecolor="none")
-    fig.patches.append(FancyBboxPatch(
-        (0.004, 0.006), 0.992, 0.988, transform=fig.transFigure, zorder=-10,
-        boxstyle=f"round,pad=0,rounding_size={0.22 / height:.3f}",
-        facecolor=C["card"], edgecolor="none", mutation_aspect=W / height))
+    fig = plt.figure(figsize=(W, height), facecolor=C["card"])
     top = 1 - 0.42 / height
     fig.text(0.055, top, title, fontsize=17, fontweight="bold", va="top")
     fig.text(0.055, top - 0.36 / height, subtitle, fontsize=10.5,
@@ -144,7 +138,7 @@ def bare(ax):
 
 def save(fig, name: str):
     OUT.mkdir(exist_ok=True)
-    fig.savefig(OUT / name, transparent=True)
+    fig.savefig(OUT / name, facecolor=C["card"])
     plt.close(fig)
     print(f"  {name}")
 
@@ -360,7 +354,9 @@ def fig_stages():
     """Where the time of one board goes."""
     h = 3.9
     total = sum(v for _, v in STAGES)
-    fig = card(h, f"Плата за {total} минут работы станка",
+    word = ("минуту" if total % 10 == 1 and total % 100 != 11 else
+            "минуты" if total % 10 in (2, 3, 4) and total % 100 not in (12, 13, 14) else "минут")
+    fig = card(h, f"Плата за {total} {word} работы станка",
                "Тестовая плата 84 × 58 мм, время программ по расчёту. Без смены фрез и карты высот")
     ax = axes(fig, h, 1.25)
     for i, (name, v) in enumerate(reversed(STAGES)):
