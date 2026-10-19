@@ -208,22 +208,24 @@ def fig_width():
                "Ширина канавки отмерена по поверхности меди")
     t = math.tan(math.radians(ANGLE / 2))
     cu, half, top, low = 0.035, 0.19, 0.16, -0.2
-    for i, (d, key) in enumerate(((0.05, "naive"), (0.1, "mine"), (0.15, "warn"))):
+    # Two colours for the material, white for the marks; only the working depth in accent.
+    FR4, CU = "#353535", "#d4864a"
+    for i, d in enumerate((0.05, 0.1, 0.15)):
         ax = fig.add_axes([0.035 + i * 0.315, 0.1, 0.3, 0.7])
         ax.set_facecolor("none")
         w = cut_width(d)
-        color = C[key] if key != "naive" else C["ink"]
+        color = C["mine"] if d == 0.1 else C["ink"]
         # Textolite with the groove cut out, then the copper layer on both sides of it.
         ax.fill([-half, -w / 2, -TIP / 2, TIP / 2, w / 2, half, half, -half],
-                [0, 0, -d, -d, 0, 0, low, low], color="#3a3324", lw=0, zorder=1)
+                [0, 0, -d, -d, 0, 0, low, low], color=FR4, lw=0, zorder=1)
         ax.fill([-half, -w / 2, -w / 2 + cu * t, -half], [0, 0, -cu, -cu],
-                color=C["copper"], lw=0, zorder=2)
+                color=CU, lw=0, zorder=2)
         ax.fill([w / 2, half, half, w / 2 - cu * t], [0, 0, -cu, -cu],
-                color=C["copper"], lw=0, zorder=2)
+                color=CU, lw=0, zorder=2)
         # The bit: its flanks lie on the groove walls.
         bit_x = [-(TIP / 2 + (top + d) * t), -TIP / 2, TIP / 2, TIP / 2 + (top + d) * t]
         bit_y = [top, -d, -d, top]
-        ax.fill(bit_x, bit_y, color="#8a8f98", alpha=0.35, lw=0, zorder=3)
+        ax.fill(bit_x, bit_y, color=C["ink"], alpha=0.24, lw=0, zorder=3)
         ax.plot(bit_x, bit_y, color=C["ink"], lw=1.3, zorder=4)
         # Width at the surface, depth at the side.
         y = 0.03
@@ -241,10 +243,10 @@ def fig_width():
         ax.set_ylim(low - 0.07, top)
         ax.set_aspect("equal")
         ax.axis("off")
-    fig.text(0.055, 0.05, "медь", fontsize=10, color=C["copper"])
-    fig.text(0.11, 0.05, "текстолит", fontsize=10, color="#9a8a68")
+    fig.text(0.055, 0.05, "медь", fontsize=10, color=CU)
+    fig.text(0.11, 0.05, "текстолит", fontsize=10, color=C["muted"])
     fig.text(0.945, 0.05, "Изоляция режет на глубине 0,1 мм", ha="right",
-             fontsize=10, color=C["muted"])
+             fontsize=10, color=C["mine"])
     save(fig, "width.png")
 
 
