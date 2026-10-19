@@ -131,10 +131,10 @@ def slant(fig):
         t.set_path_effects([Slanted(e, SLANT) for e in effects])
 
 
-# The field of the card is pressed in: darker than the Habr grey, in shade at the top left,
-# the grey coming back softly at the bottom right.
+# The card: a dark round field on the Habr grey, a plain edge. The shade terms stay at
+# zero: a soft edge was tried and turned down.
 INSET = {"margin": 0.1, "radius": 0.2, "shift": 0.06, "blur": 0.1,
-         "dark": 1.0, "light": 0.85, "panel": "#040404"}  # the pressed-in field
+         "dark": 0.0, "light": 0.0, "panel": "#040404"}  # two plain grounds, no shading
 
 
 def inset(fig, dpi: int = DPI):
