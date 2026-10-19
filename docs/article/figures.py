@@ -503,14 +503,14 @@ def hand_board():
 # Photos of the article: what is cut away from each, in the pixels of the photo.
 PHOTOS = (
     ("milled-board", (0, 270, 960, 1215)),     # the room above and the hand below
-    ("machine-table", (60, 0, 960, 990)),      # the red frame and the cable below
+    ("machine-table", (60, 0, 960, 960)),      # the red frame and the cable below
     ("first-board", (0, 0, 372, 360)),         # the finger on the right
     ("testboard-hand", None),                  # squared, the fingers cut away
 )
 
 
 def fig_photos():
-    """Each photo on the same two grounds as the cards, its corners round."""
+    """Each photo on the grey ground alone, its corners round."""
     from PIL import Image
     pad = 0.12
     for name, box in PHOTOS:
@@ -522,7 +522,6 @@ def fig_photos():
         width = 7.0
         height = (width - 2 * side) * h / w + 2 * side
         fig = plt.figure(figsize=(width, height), facecolor=C["card"])
-        inset(fig)
         ax = fig.add_axes([side / width, side / height, 1 - 2 * side / width, 1 - 2 * side / height])
         shown = ax.imshow(ph, interpolation="lanczos")
         shown.set_clip_path(FancyBboxPatch((-0.5, -0.5), w, h, transform=ax.transData,
