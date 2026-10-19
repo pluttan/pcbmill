@@ -15,3 +15,4 @@ scan*.csv
 /build/
 /docs/article/data/*.json
 /docs/article/data/shots/
+/docs/article/habr-pcbmill.md
