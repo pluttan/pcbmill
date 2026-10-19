@@ -478,10 +478,69 @@ def fig_cover():
     print("  cover.png")
 
 
+def hand_board():
+    """The test board from photos/testboard-hand.jpg, squared to 84 x 58 mm.
+
+    The corners were read off the photo by eye; the fingers reach over the left and
+    the right edge, so a strip on both sides is cut away.
+    """
+    from PIL import Image
+    im = Image.open(HERE / "photos" / "testboard-hand.jpg").convert("RGB")
+    src = [(103, 362), (978, 357), (996, 962), (101, 978)]
+    w, h = 1680, 1160
+    dst = [(0, 0), (w, 0), (w, h), (0, h)]
+    a, b = [], []
+    for (x, y), (u, v) in zip(dst, src):
+        a.append([x, y, 1, 0, 0, 0, -u * x, -u * y])
+        b.append(u)
+        a.append([0, 0, 0, x, y, 1, -v * x, -v * y])
+        b.append(v)
+    coef = np.linalg.solve(np.array(a, float), np.array(b, float))
+    board = im.transform((w, h), Image.PERSPECTIVE, tuple(coef), Image.BICUBIC)
+    return board.crop((48, 4, 1650, h - 4))
+
+
+# Photos of the article: what is cut away from each, in the pixels of the photo.
+PHOTOS = (
+    ("milled-board", (0, 270, 960, 1215)),     # the room above and the hand below
+    ("machine-table", (60, 0, 960, 990)),      # the red frame and the cable below
+    ("first-board", (0, 0, 372, 360)),         # the finger on the right
+    ("testboard-hand", None),                  # squared, the fingers cut away
+)
+
+
+def fig_photos():
+    """Each photo on the same two grounds as the cards, its corners round."""
+    from PIL import Image
+    pad = 0.12
+    for name, box in PHOTOS:
+        im = hand_board() if box is None else \
+            Image.open(HERE / "photos" / f"{name}.jpg").convert("RGB").crop(box)
+        ph = np.asarray(im, float) / 255
+        h, w = ph.shape[:2]
+        side = INSET["margin"] + pad
+        width = 7.0
+        height = (width - 2 * side) * h / w + 2 * side
+        fig = plt.figure(figsize=(width, height), facecolor=C["card"])
+        inset(fig)
+        ax = fig.add_axes([side / width, side / height, 1 - 2 * side / width, 1 - 2 * side / height])
+        shown = ax.imshow(ph, interpolation="lanczos")
+        shown.set_clip_path(FancyBboxPatch((-0.5, -0.5), w, h, transform=ax.transData,
+                                           boxstyle=f"round,pad=0,rounding_size={min(w, h) * 0.025:.0f}"))
+        ax.axis("off")
+        OUT.mkdir(exist_ok=True)
+        tmp = OUT / f"photo-{name}.png"
+        fig.savefig(tmp, facecolor=C["card"])
+        plt.close(fig)
+        Image.open(tmp).convert("RGB").save(OUT / f"photo-{name}.jpg", quality=90)
+        tmp.unlink()
+        print(f"  photo-{name}.jpg")
+
+
 def main():
     style()
     print(f"рисую в {OUT}")
-    for fig in (fig_width, fig_pipeline, fig_board, fig_stage_grid, fig_predict,
+    for fig in (fig_width, fig_pipeline, fig_board, fig_stage_grid, fig_predict, fig_photos,
                 fig_stages, fig_cover):
         fig()
 
