@@ -201,36 +201,50 @@ def panel(ax, box, label):
 # ==============================
 
 def fig_width():
-    """Why the height matters: a section through the V-bit, the width it cuts at each depth."""
-    h = 5.6
+    """Why the height matters: the V-bit at three depths, the groove it leaves at the copper surface."""
+    h = 5.0
     fig = card(h, "Чем глубже V-фреза, тем шире рез",
-               f"Разрез фрезы {ru(TIP)} мм / {ru(ANGLE, 0)}°. Справа ширина канавки на каждой глубине")
-    ax = fig.add_axes([0.04, 0.09, 0.92, 0.7])
-    ax.set_facecolor("none")
+               f"Разрез фрезы: кончик {ru(TIP)} мм, угол {ru(ANGLE, 0)}°. "
+               "Ширина канавки отмерена по поверхности меди")
     t = math.tan(math.radians(ANGLE / 2))
-    deep, top = 0.2, 0.1
-    ax.fill_between([-0.42, 0.42], -0.24, 0, color="#3a3324", lw=0, zorder=1)
-    ax.plot([-0.42, 0.42], [0, 0], color=C["copper"], lw=3, zorder=2)
-    ax.text(-0.415, 0.012, "поверхность меди", fontsize=10, color=C["copper"])
-    ax.text(-0.415, -0.232, "текстолит", fontsize=10, color=C["muted"])
-    xs = [-(TIP / 2 + (top + deep) * t), -TIP / 2, TIP / 2, TIP / 2 + (top + deep) * t]
-    ys = [top, -deep, -deep, top]
-    ax.fill(xs, ys, color="#8a8f98", alpha=0.3, lw=0, zorder=2)
-    ax.plot(xs, ys, color=C["ink"], lw=1.4, zorder=3)
-    for d, key in ((0.05, "naive"), (0.1, "mine"), (0.15, "warn")):
+    cu, half, top, low = 0.035, 0.19, 0.16, -0.2
+    for i, (d, key) in enumerate(((0.05, "naive"), (0.1, "mine"), (0.15, "warn"))):
+        ax = fig.add_axes([0.035 + i * 0.315, 0.1, 0.3, 0.7])
+        ax.set_facecolor("none")
         w = cut_width(d)
-        y = -d
-        ax.plot([-0.42, 0.42], [y, y], color=C["grid"], lw=0.8, ls=(0, (3, 3)), zorder=2)
-        ax.plot([-w / 2, w / 2], [y, y], color=C[key], lw=3.2, solid_capstyle="butt", zorder=4)
-        ax.text(-0.415, y + 0.007, f"глубина {ru(d, 2)} мм", fontsize=10, color=C["muted"])
-        ax.text(0.17, y + 0.007, f"ширина {ru(w, 3)} мм", fontsize=11.5, fontweight="bold",
-                color=C[key] if key != "naive" else C["ink"])
-    ax.set_xlim(-0.42, 0.42)
-    ax.set_ylim(-0.24, top)
-    ax.set_aspect("equal")
-    ax.axis("off")
-    fig.text(0.055, 0.035, "Ширина реза: кончик + 2 · глубина · tg(угол / 2). Мы режем на 0,1 мм.",
-             fontsize=9.5, color=C["muted"])
+        color = C[key] if key != "naive" else C["ink"]
+        # Textolite with the groove cut out, then the copper layer on both sides of it.
+        ax.fill([-half, -w / 2, -TIP / 2, TIP / 2, w / 2, half, half, -half],
+                [0, 0, -d, -d, 0, 0, low, low], color="#3a3324", lw=0, zorder=1)
+        ax.fill([-half, -w / 2, -w / 2 + cu * t, -half], [0, 0, -cu, -cu],
+                color=C["copper"], lw=0, zorder=2)
+        ax.fill([w / 2, half, half, w / 2 - cu * t], [0, 0, -cu, -cu],
+                color=C["copper"], lw=0, zorder=2)
+        # The bit: its flanks lie on the groove walls.
+        bit_x = [-(TIP / 2 + (top + d) * t), -TIP / 2, TIP / 2, TIP / 2 + (top + d) * t]
+        bit_y = [top, -d, -d, top]
+        ax.fill(bit_x, bit_y, color="#8a8f98", alpha=0.35, lw=0, zorder=3)
+        ax.plot(bit_x, bit_y, color=C["ink"], lw=1.3, zorder=4)
+        # Width at the surface, depth at the side.
+        y = 0.03
+        ax.annotate("", (-w / 2, y), (w / 2, y), zorder=5,
+                    arrowprops=dict(arrowstyle="<->", color=color, lw=1.6, shrinkA=0, shrinkB=0))
+        for x in (-w / 2, w / 2):
+            ax.plot([x, x], [0, y + 0.012], color=color, lw=0.9, zorder=5)
+        ax.text(0, low - 0.022, f"ширина {ru(w, 3)} мм", ha="center", va="top",
+                fontsize=13, fontweight="bold", color=color)
+        ax.plot([-half + 0.01, -TIP / 2 - 0.01], [-d, -d], color=C["muted"], lw=0.8,
+                ls=(0, (3, 3)), zorder=5)
+        ax.text(-half + 0.01, -d - 0.008, f"глубина {ru(d, 2)} мм", va="top",
+                fontsize=10, color=C["muted"], zorder=6)
+        ax.set_xlim(-half, half)
+        ax.set_ylim(low - 0.07, top)
+        ax.set_aspect("equal")
+        ax.axis("off")
+    fig.text(0.055, 0.05, "медь", fontsize=10, color=C["copper"])
+    fig.text(0.11, 0.05, "текстолит", fontsize=10, color="#9a8a68")
+    fig.text(0.945, 0.05, "Изоляция режет на глубине 0,1 мм", ha="right",
+             fontsize=10, color=C["muted"])
     save(fig, "width.png")
 
 
