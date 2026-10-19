@@ -214,7 +214,7 @@ def fig_width():
         ax = fig.add_axes([0.035 + i * 0.315, 0.1, 0.3, 0.7])
         ax.set_facecolor("none")
         w = cut_width(d)
-        color = C["mine"] if d == 0.1 else C["ink"]
+        color = C["ink"]
         # Textolite with the groove cut out, then the copper layer on both sides of it.
         ax.fill([-half, -w / 2, -TIP / 2, TIP / 2, w / 2, half, half, -half],
                 [0, 0, -d, -d, 0, 0, low, low], color=FR4, lw=0, zorder=1)
@@ -229,10 +229,9 @@ def fig_width():
         ax.plot(bit_x, bit_y, color=C["ink"], lw=1.3, zorder=4)
         # Width at the surface, depth at the side.
         y = 0.03
-        ax.annotate("", (-w / 2, y), (w / 2, y), zorder=5,
-                    arrowprops=dict(arrowstyle="<->", color=color, lw=1.6, shrinkA=0, shrinkB=0))
+        ax.plot([-w / 2, w / 2], [y, y], color=color, lw=1.3, zorder=5)
         for x in (-w / 2, w / 2):
-            ax.plot([x, x], [0, y + 0.012], color=color, lw=0.9, zorder=5)
+            ax.plot([x, x], [0, y + 0.01], color=color, lw=1.3, zorder=5)
         ax.text(0, low - 0.022, f"ширина {ru(w, 3)} мм", ha="center", va="top",
                 fontsize=13, fontweight="bold", color=color)
         ax.plot([-half + 0.01, -TIP / 2 - 0.01], [-d, -d], color=C["muted"], lw=0.8,
@@ -246,7 +245,7 @@ def fig_width():
     fig.text(0.055, 0.05, "медь", fontsize=10, color=CU)
     fig.text(0.11, 0.05, "текстолит", fontsize=10, color=C["muted"])
     fig.text(0.945, 0.05, "Изоляция режет на глубине 0,1 мм", ha="right",
-             fontsize=10, color=C["mine"])
+             fontsize=10, color=C["muted"])
     save(fig, "width.png")
 
 
