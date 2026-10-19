@@ -32,6 +32,8 @@ from matplotlib import font_manager, rcParams
 from matplotlib import patheffects
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.patches import FancyBboxPatch
+from matplotlib.text import Text
+from matplotlib.transforms import Affine2D
 
 HERE = Path(__file__).resolve().parent
 OUT = HERE / "img"
@@ -105,6 +107,30 @@ def bold(color: str, width: float = 1.0):
     return [patheffects.withStroke(linewidth=width, foreground=color)]
 
 
+class Slanted(patheffects.AbstractPathEffect):
+    """Draw a text effect with its glyphs leaned forward: GOST Type BU has no italic face."""
+
+    def __init__(self, inner, deg: float):
+        super().__init__()
+        self.inner, self.deg = inner, deg
+
+    def draw_path(self, renderer, gc, tpath, affine, rgbFace=None):
+        self.inner.draw_path(renderer, gc, tpath, Affine2D().skew_deg(self.deg, 0) + affine, rgbFace)
+
+
+# ГОСТ 2.304: the slanted type leans at 75 degrees to the line.
+SLANT = 15
+
+
+def slant(fig):
+    """Lean every text of the figure; lines and pictures stay upright."""
+    for t in fig.findobj(Text):
+        if t.get_text() == "●":
+            continue
+        effects = t.get_path_effects() or [patheffects.Normal()]
+        t.set_path_effects([Slanted(e, SLANT) for e in effects])
+
+
 def card(height: float, title: str, subtitle: str, legend=()):
     fig = plt.figure(figsize=(W, height), facecolor=C["card"])
     top = 1 - 0.42 / height
@@ -144,6 +170,7 @@ def bare(ax):
 
 def save(fig, name: str):
     OUT.mkdir(exist_ok=True)
+    slant(fig)
     fig.savefig(OUT / name, facecolor=C["card"])
     plt.close(fig)
     print(f"  {name}")
@@ -407,6 +434,7 @@ def fig_cover():
              color=C["muted"], va="top", linespacing=1.45)
     fig.text(0.05, 0.1, "дорожка и зазор 0,2 мм", fontsize=12, color=C["ink"], va="bottom")
     OUT.mkdir(exist_ok=True)
+    slant(fig)
     fig.savefig(OUT / "cover.png", dpi=200, facecolor=C["card"])
     plt.close(fig)
     print("  cover.png")
