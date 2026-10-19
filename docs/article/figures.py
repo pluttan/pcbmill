@@ -227,11 +227,7 @@ def fig_width():
         bit_y = [top, -d, -d, top]
         ax.fill(bit_x, bit_y, color=C["ink"], alpha=0.24, lw=0, zorder=3)
         ax.plot(bit_x, bit_y, color=C["ink"], lw=1.3, zorder=4)
-        # Width at the surface, depth at the side.
-        y = 0.03
-        ax.plot([-w / 2, w / 2], [y, y], color=color, lw=1.3, zorder=5)
-        for x in (-w / 2, w / 2):
-            ax.plot([x, x], [0, y + 0.01], color=color, lw=1.3, zorder=5)
+        # Width under the panel, depth at the side.
         ax.text(0, low - 0.022, f"ширина {ru(w, 3)} мм", ha="center", va="top",
                 fontsize=13, fontweight="bold", color=color)
         ax.plot([-half + 0.01, -TIP / 2 - 0.01], [-d, -d], color=C["muted"], lw=0.8,
