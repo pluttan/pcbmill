@@ -33,6 +33,7 @@ type camCfg struct {
 	HoleTool        float64 // the end mill of the holes
 	HoleFeed        float64 // its feed round the helix
 	HoleStep        float64 // down per turn of the helix
+	ClearReach      float64 // the sheet copper this far from the copper taken off by that end mill, 0: none
 	VDepth, VStep   float64
 	VFeed           float64
 	Side            int // sideTop, sideBottom: the copper side milled, face up
@@ -68,6 +69,18 @@ func (c camCfg) maskWidth(depth float64) float64 {
 // cutWidth of the V-bit at a depth.
 func (c camCfg) cutWidth(depth float64) float64 {
 	return c.Tip + 2*depth*math.Tan(c.Angle/2*math.Pi/180)
+}
+
+// copperT: the thickest copper of a blank, mm. Under the top of the copper the
+// V-bit is narrower; two passes that only meet at the top leave a ring of copper
+// at the bottom between them, a long thin conductor round every track.
+const copperT = 0.035
+
+// isoStep: from one isolation pass to the next; the overlap is counted at the
+// bottom of the copper, where the cut is narrowest. With the defaults the bit
+// may go 0.055 mm shallower and the passes still meet there.
+func (c camCfg) isoStep() float64 {
+	return c.cutWidth(math.Max(c.IsoDepth-copperT, 0)) * (1 - overlap)
 }
 
 const (
@@ -195,6 +208,89 @@ func placeOp(op *camOp, pls []place) *camOp {
 	}
 	return &out
 }
+
+// ==========================
+// ===  Clearing          ===
+// ==========================
+
+// clearing: the sheet copper of the wide gaps taken off by the end mill of the
+// holes. Isolation cuts round the copper only; the rest of the sheet stays. On
+// a board of high voltage a piece of it in a gap shortens the way over the
+// surface between two nets, and the later passes of the V-bit leave such
+// pieces: their loops break into crumbs, and a little too shallow they do not
+// meet at the bottom of the copper. The end mill is as wide at any depth.
+// Its loops run round the copper from the middle of the first isolation pass
+// (the edge of the mill there, its centre a radius further) out to ClearReach,
+// a cut less the overlap apart. Outside the outline counts as copper: the mill
+// keeps half an isolation cut inside the edge, the V-groove takes the rest.
+// A loop too short for a ring is a plunge at its middle; a thin one (a ridge
+// between two nets) is cut along one side.
+func clearing(b *board, side string, c camCfg) *camOp {
+	g := b.copper[side]
+	r := c.HoleTool / 2
+	first := c.cutWidth(c.IsoDepth)/2 + r
+	step := 2 * r * (1 - overlap)
+	cu, _ := g.bounds()
+	area := cu.union(b.box)
+	m := c.ClearReach + 2*r + 0.5
+	ras := newRaster(rect{area.X0 - m, area.X1 + m, area.Y0 - m, area.Y1 + m}, 0.01)
+	for _, s := range g.shapes {
+		ras.draw(s)
+	}
+	bm := boardMask(b, ras)
+	if bm != nil {
+		for k, v := range bm.bits {
+			if v == 0 {
+				ras.bits[k] = 1 // off the board: the mill stays inside
+			}
+		}
+	}
+	// beyond the grid counts as not copper: a loop runs round its border then
+	off := func(l []pt) bool {
+		for _, q := range l {
+			if bm != nil && (q.X < b.box.X0 || q.X > b.box.X1 || q.Y < b.box.Y0 || q.Y > b.box.Y1) {
+				return true
+			}
+		}
+		return false
+	}
+	field := ras.distTo(1, nil)
+	op := &camOp{file: clearFile, title: "Выборка меди фрезой " + num(c.HoleTool) + " мм",
+		plunge: c.Plunge, feed: c.IsoFeed, spindle: c.Spindle}
+	var loops, beads [][]pt
+	n := 0
+	for t := first; t-r < c.ClearReach; t += step {
+		n++
+		for _, l := range ras.levelLines(field, (t/ras.px+0.5)*distScale, false) {
+			if off(l) {
+				continue
+			}
+			if pathLen(l) < math.Pi*r {
+				beads = append(beads, []pt{centroid(l)})
+				continue
+			}
+			if thinLoop(l) {
+				if h := halfLoop(l); h != nil {
+					l = h
+				}
+			}
+			if l = simplify(l, simpTol); len(l) >= 2 {
+				loops = append(loops, l)
+			}
+		}
+	}
+	loops = append(loops, chainBeads(beads, r)...)
+	op.paths = rawPaths(loops, -c.IsoDepth)
+	length := 0.0
+	for _, l := range loops {
+		length += pathLen(l)
+	}
+	op.notes = append(op.notes, fmt.Sprintf("выборка до %s мм от меди: фреза %s мм, петель %d, путь %.1f м",
+		num(c.ClearReach), num(c.HoleTool), n, length/1000))
+	return op
+}
+
+const clearFile = "3_clear"
 
 // ==========================
 // ===  Isolation         ===
@@ -349,11 +445,13 @@ func boardMask(b *board, r *raster) *raster {
 func isolation(b *board, side string, c camCfg, field []uint16) (*camOp, []uint16) {
 	g := b.copper[side]
 	w := c.cutWidth(c.IsoDepth)
-	step := w * (1 - overlap)
+	step := c.isoStep()
 	reach := w/2 + float64(c.Passes-1)*step
 	cu, _ := g.bounds()
 	area := cu.union(b.box)
-	m := reach + w + 0.5
+	// the raster margin by the step at the top of the copper, as before isoStep:
+	// the same grid and pixel, so the narrow places found stay where they were
+	m := w/2 + float64(c.Passes-1)*w*(1-overlap) + w + 0.5
 	r := newRaster(rect{area.X0 - m, area.X1 + m, area.Y0 - m, area.Y1 + m}, 0.01)
 	for _, s := range g.shapes {
 		r.draw(s)
@@ -397,22 +495,30 @@ func isolation(b *board, side string, c camCfg, field []uint16) (*camOp, []uint1
 	var loops [][]pt
 	var beads [][]pt
 	crumbs := 0
+	// With the clearing on (a board of high voltage) a later pass keeps its
+	// crumbs as the first one does: dropped, each leaves a sliver of copper in
+	// the middle of a gap, and a row of them is a conductor across it.
+	whole := c.ClearReach > 0
 	for k, t := range ts {
+		bead := k == 0 || whole
 		for _, l := range r.levelLines(field, t, false) {
-			if k == 0 && pathLen(l) < isoBead {
+			if bead && pathLen(l) < isoBead {
 				beads = append(beads, []pt{centroid(l)})
 				continue
 			}
-			if k == 0 && thinLoop(l) {
+			if bead && thinLoop(l) {
 				if h := halfLoop(l); h != nil {
 					beads = append(beads, h)
 					continue
 				}
 			}
 			if l = simplify(l, simpTol); len(l) < 3 {
+				if whole && len(l) > 0 {
+					beads = append(beads, []pt{centroid(l)})
+				}
 				continue
 			}
-			if k > 0 && pathLen(l) < isoCrumb {
+			if k > 0 && !whole && pathLen(l) < isoCrumb {
 				crumbs++
 				continue
 			}
@@ -1038,6 +1144,12 @@ func camBoard(b *board, c camCfg, say func(string)) []*camOp {
 		if c.MaskFlat > 0 {
 			op.tool = "фреза " + num(c.MaskFlat) + " мм" // the same words as the holes: one tool, no new Z0
 		}
+		ops = append(ops, op)
+	}
+	if b.copper[side] != nil && c.ClearReach > 0 {
+		say(b.name + ": выборка меди")
+		op := clearing(b, side, c)
+		op.tool = holeTool(c) // before the holes, with the same mill: no new Z0
 		ops = append(ops, op)
 	}
 	for _, op := range drilling(b, c) {

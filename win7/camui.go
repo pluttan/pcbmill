@@ -67,6 +67,8 @@ var camFields = []camField{
 		get: func(c *camCfg) float64 { return c.HoleFeed }, put: func(c *camCfg, v float64) { c.HoleFeed = v }},
 	{key: "holestep", label: "вниз за оборот", unit: "мм", lo: 0.05, hi: 1, step: 0.05, digits: 2,
 		get: func(c *camCfg) float64 { return c.HoleStep }, put: func(c *camCfg, v float64) { c.HoleStep = v }},
+	{key: "clear", label: "выборка меди до", unit: "мм", lo: 0, hi: 10, step: 0.5, digits: 1,
+		get: func(c *camCfg) float64 { return c.ClearReach }, put: func(c *camCfg, v float64) { c.ClearReach = v }},
 	{key: "vdepth", group: "V-рез по контуру", label: "глубина", unit: "мм", lo: 0.1, hi: 4, step: 0.1, digits: 2,
 		get: func(c *camCfg) float64 { return c.VDepth }, put: func(c *camCfg, v float64) { c.VDepth = v }},
 	{key: "vstep", label: "за проход", unit: "мм", lo: 0.05, hi: 2, step: 0.05, digits: 2,

@@ -50,7 +50,7 @@ func toolOf(file string, c camCfg) string {
 			return "фреза " + num(c.MaskFlat) + " мм"
 		}
 		return vbit
-	case base == holesFile || (base == "3_drill_probe" && c.HoleMill > 0):
+	case base == holesFile || base == clearFile || (base == "3_drill_probe" && c.HoleMill > 0):
 		return holeTool(c)
 	case strings.HasPrefix(base, "3_drill_"):
 		return "сверло " + strings.TrimPrefix(base, "3_drill_")
