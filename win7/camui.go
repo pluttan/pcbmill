@@ -36,7 +36,8 @@ var camFields = []camField{
 		get: func(c *camCfg) float64 { return c.Spindle }, put: func(c *camCfg, v float64) { c.Spindle = v }},
 	{key: "isodepth", group: "Изоляция дорожек", label: "глубина", unit: "мм", lo: 0.02, hi: 0.5, step: 0.01, digits: 2,
 		get: func(c *camCfg) float64 { return c.IsoDepth }, put: func(c *camCfg, v float64) { c.IsoDepth = v }},
-	{key: "passes", label: "обходов", lo: 1, hi: 8, step: 1,
+	// up to 24: a board of high voltage clears its wide gaps of the sheet copper by passes alone
+	{key: "passes", label: "обходов", lo: 1, hi: 24, step: 1,
 		get: func(c *camCfg) float64 { return float64(c.Passes) }, put: func(c *camCfg, v float64) { c.Passes = int(v) }},
 	{key: "isofeed", label: "подача", unit: "мм/мин", lo: 10, hi: 3000, step: 50,
 		get: func(c *camCfg) float64 { return c.IsoFeed }, put: func(c *camCfg, v float64) { c.IsoFeed = v }},
